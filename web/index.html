@@ -1,4 +1,5 @@
 <title>Kho & Đặt hàng — Ijomi</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2315181D'/%3E%3Ctext x='16' y='22' font-family='monospace' font-size='15' font-weight='700' fill='%23fff' text-anchor='middle'%3EIJ%3C/text%3E%3C/svg%3E">
 <style>
 :root{
   --bg:#F2F3F5; --card:#FFFFFF; --sunk:#E9EBEE; --sunk2:#DFE2E6;
@@ -136,6 +137,12 @@ table.list td.n,table.list th.n{text-align:right;font-family:var(--mono);font-va
 table.list thead th.n{font-family:var(--sans)}
 table.list code{font-family:var(--mono);font-size:12.5px}
 table.list tfoot td{background:var(--sunk);font-weight:640}
+#conflict{background:var(--low-soft);border:1px solid var(--low);border-radius:11px;padding:13px 16px;margin-bottom:16px;display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+#conflict[hidden]{display:none}   /* phải có: display:flex ở trên đè mất thuộc tính hidden */
+#conflict b{color:var(--low);font-size:13.5px}
+#syncChip.ok{border-color:var(--act);color:var(--act)}
+#syncChip.err{border-color:var(--lock);color:var(--lock)}
+#syncChip.busy{opacity:.6}
 table.list tr.huy td{opacity:.62}
 table.list tr.huy code{text-decoration:line-through}
 
@@ -164,9 +171,12 @@ table.list tr.huy code{text-decoration:line-through}
     <div class="stat"><span class="lbl">Xuất hôm nay</span><b id="kOut">0</b></div>
     <div class="stat"><span class="lbl">Huỷ hôm nay</span><b class="warn" id="kHuy">0</b></div>
     <div class="stat"><span class="lbl">Ô khoá</span><b class="lock" id="kLock">0</b></div>
+    <button class="btn sm noprint" id="syncChip" title="Trạng thái đồng bộ Google Sheets">Chưa nối Sheets</button>
     <button class="btn sm noprint" id="themeBtn" title="Đổi nền sáng/tối">◐</button>
   </div>
 </header>
+
+<div id="conflict" hidden></div>
 
 <section class="card">
   <h2>Bảng tồn kho <span class="hint" id="modeHint"></span></h2>
@@ -222,6 +232,20 @@ table.list tr.huy code{text-decoration:line-through}
         <input type="number" id="lowVal" min="0"></label>
       <label><span class="lbl">Chỉ nhận SKU bắt đầu bằng</span>
         <input type="text" id="pfx" placeholder="để trống = tự nhận mọi mã"></label>
+    </div>
+    <div class="hr" style="margin:16px 0"></div>
+    <h3 style="margin:0 0 4px;font-size:13.5px;font-weight:660">Đồng bộ Google Sheets</h3>
+    <p class="note" style="margin:0 0 12px">Dán địa chỉ ứng dụng web của Apps Script để nhiều máy dùng chung một kho dữ liệu. Bỏ trống thì phần mềm chỉ lưu trong máy này.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px">
+      <label><span class="lbl">Địa chỉ ứng dụng web</span>
+        <input type="text" id="syncUrl" placeholder="https://script.google.com/macros/s/…/exec"></label>
+      <label><span class="lbl">Mã bảo vệ</span>
+        <input type="text" id="syncToken" placeholder="trùng với TOKEN trong Apps Script"></label>
+    </div>
+    <div class="bar" style="padding:12px 0 0">
+      <button class="btn pri" id="syncPull">Tải từ Sheets về máy</button>
+      <button class="btn" id="syncPush">Đưa dữ liệu máy này lên Sheets</button>
+      <span class="note" id="syncMsg"></span>
     </div>
     <div class="bar" style="padding:16px 0 0">
       <button class="btn" id="expJson">Tải file sao lưu</button>
@@ -399,7 +423,7 @@ async function readLabels(u8){
 }
 
 /* ═══════════ dữ liệu ═══════════ */
-const DEFAULTS={sizes:[38,39,40,41,42,43,44],low:2,prefix:""};
+const DEFAULTS={sizes:[38,39,40,41,42,43,44],low:2,prefix:"",syncUrl:"",syncToken:""};
 function seed(){
   const mk=(sku,ten,q,lock)=>{
     const sizes={};
@@ -413,7 +437,7 @@ function seed(){
       mk("ij-f50tf-t","Tím TF",{42:5},[40,41]),
       mk("ij-f50tf-c","Cam TF",{},[])
     ]}],
-    moves:[],draft:{},settings:Object.assign({},DEFAULTS)
+    moves:[],draft:{},ver:0,settings:Object.assign({},DEFAULTS)
   };
 }
 let S=load();
@@ -422,17 +446,22 @@ function load(){
     const r=JSON.parse(localStorage.getItem(KEY));
     if(r&&r.groups){
       r.settings=Object.assign({},DEFAULTS,r.settings||{});
-      r.moves=r.moves||[];r.draft=r.draft||{};
+      r.moves=r.moves||[];r.draft=r.draft||{};r.ver=r.ver||0;
       return r;
     }
   }catch(e){}
   return seed();
 }
 let saveT=null;
-function save(){clearTimeout(saveT);saveT=setTimeout(()=>{
-  try{localStorage.setItem(KEY,JSON.stringify(S))}
-  catch(e){toast("Không lưu được — bộ nhớ trình duyệt đã đầy. Hãy xoá bớt ảnh sản phẩm.")}
-},120)}
+function save(opt){
+  clearTimeout(saveT);
+  saveT=setTimeout(()=>{
+    try{localStorage.setItem(KEY,JSON.stringify(S))}
+    catch(e){toast("Không lưu được — bộ nhớ trình duyệt đã đầy. Hãy xoá bớt ảnh sản phẩm.")}
+  },120);
+  /* draft đặt hàng chỉ là nháp trong máy, không cần đẩy lên Sheets */
+  if(!(opt&&opt.local))syncSoon();
+}
 
 const SZ=()=>S.settings.sizes;
 const items=()=>S.groups.flatMap(g=>g.items.map(it=>({g,it})));
@@ -444,6 +473,131 @@ const totAll=()=>S.groups.reduce((a,g)=>a+totGroup(g),0);
 const lockCount=()=>items().reduce((a,x)=>a+SZ().filter(s=>cellOf(x.it,s).lock).length,0);
 const outToday=()=>S.moves.filter(m=>m.d===todayKey()&&m.t==="out"&&!m.huy).reduce((a,m)=>a+m.q,0);
 const huyToday=()=>S.moves.filter(m=>m.t==="out"&&m.huy&&m.huy.d===todayKey()).reduce((a,m)=>a+m.q,0);
+
+
+/* ═══════════ đồng bộ Google Sheets qua Apps Script ═══════════
+   Máy vẫn làm việc trên localStorage cho nhanh; Sheets là kho chung.
+   Mỗi lần ghi lên, máy chủ tăng số phiên bản. Nếu số phiên bản trên Sheets
+   khác số mình đang giữ nghĩa là máy khác vừa sửa — dừng lại hỏi, không ghi đè. */
+let syncState="off",syncT=null,syncBusy=false;
+const syncOn=()=>!!(S.settings.syncUrl||"").trim();
+
+function setSync(st,msg){
+  syncState=st;
+  const c=document.getElementById("syncChip");
+  if(!c)return;
+  const txt={off:"Chưa nối Sheets",ok:"Đã đồng bộ",busy:"Đang đồng bộ…",
+             err:"Lỗi đồng bộ",conflict:"Cần xử lý"};
+  c.textContent=txt[st]||st;
+  c.className="btn sm noprint"+(st==="ok"?" ok":st==="err"||st==="conflict"?" err":st==="busy"?" busy":"");
+  const m=document.getElementById("syncMsg");
+  if(m&&msg!==undefined)m.textContent=msg;
+}
+async function callSync(payload){
+  const url=(S.settings.syncUrl||"").trim();
+  if(!url)throw new Error("chưa đặt địa chỉ");
+  /* text/plain để trình duyệt gửi thẳng, không hỏi trước — Apps Script không trả lời bước hỏi đó */
+  const r=await fetch(url,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},
+    body:JSON.stringify(Object.assign({token:(S.settings.syncToken||"").trim()},payload)),
+    redirect:"follow"});
+  if(!r.ok)throw new Error("máy chủ trả về "+r.status);
+  const t=await r.text();
+  let j;try{j=JSON.parse(t)}catch(e){throw new Error("trả về không đúng định dạng — kiểm tra lại quyền truy cập của ứng dụng web")}
+  if(!j.ok)throw new Error(j.err==="sai_token"?"mã bảo vệ không khớp":(j.err||"lỗi không rõ"));
+  return j;
+}
+
+/* --- đóng gói / mở gói dữ liệu theo dạng bảng để đọc thẳng trong Sheets --- */
+function packState(){
+  const sizes=SZ();
+  const kho=[];
+  S.groups.forEach(g=>g.items.forEach(it=>{
+    kho.push([g.ten,it.sku,it.ten].concat(sizes.map(z=>{
+      const c=cellOf(it,z);return c.lock?"N":(c.q||0);
+    })));
+  }));
+  const moves=S.moves.map(m=>[m.id,m.d,m.h||"",m.t,m.sku,m.size,m.q,m.track||"",
+    m.order||"",m.note||"",m.huy?m.huy.d:"",m.huy?m.huy.h:"",m.digits||""]);
+  const anh=[];
+  S.groups.forEach(g=>g.items.forEach(it=>{if(it.img)anh.push([it.sku,it.img])}));
+  return {sizes,kho,moves,anh,cai:{low:S.settings.low,prefix:S.settings.prefix}};
+}
+function unpackState(d){
+  const sizes=(d.sizes&&d.sizes.length?d.sizes:SZ()).map(Number);
+  const imgOf={};(d.anh||[]).forEach(r=>{if(r[0])imgOf[String(r[0]).toLowerCase()]=r[1]});
+  const groups=[];
+  (d.kho||[]).forEach(r=>{
+    const ten=String(r[0]||"").trim(),sku=String(r[1]||"").trim().toLowerCase();
+    if(!sku)return;
+    let g=groups.find(v=>v.ten===ten);
+    if(!g){g={id:uid(),ten,items:[]};groups.push(g)}
+    const sz={};
+    sizes.forEach((z,i)=>{
+      const v=r[3+i];
+      sz[z]=String(v).trim().toUpperCase()==="N"?{q:0,lock:true}:{q:Math.round(+v||0),lock:false};
+    });
+    g.items.push({id:uid(),sku,ten:String(r[2]||"").trim(),img:imgOf[sku]||"",sizes:sz});
+  });
+  const moves=(d.moves||[]).filter(r=>r[0]).map(r=>{
+    const m={id:String(r[0]),d:String(r[1]||""),h:String(r[2]||""),t:String(r[3]||"out"),
+      sku:String(r[4]||"").toLowerCase(),size:+r[5]||0,q:+r[6]||0,
+      track:String(r[7]||""),order:String(r[8]||""),note:String(r[9]||""),digits:String(r[12]||"")};
+    if(r[10])m.huy={d:String(r[10]),h:String(r[11]||"")};
+    return m;
+  });
+  return {groups,moves,sizes,cai:d.cai||{}};
+}
+
+async function syncPull(quiet){
+  if(!syncOn())return;
+  setSync("busy",quiet?"":"Đang tải về…");
+  try{
+    const j=await callSync({action:"pull"});
+    const u=unpackState(j.data||{});
+    if(!u.groups.length&&!u.moves.length){
+      /* Sheets còn trống: coi như lần đầu, đẩy dữ liệu máy này lên làm gốc */
+      S.ver=j.ver||0;save({local:true});await syncPush(true);
+      setSync("ok","Sheets đang trống — đã đưa dữ liệu máy này lên làm gốc.");
+      return;
+    }
+    S.groups=u.groups;S.moves=u.moves;
+    S.settings.sizes=u.sizes;
+    if(u.cai.low!==undefined&&u.cai.low!=="")S.settings.low=+u.cai.low||0;
+    if(u.cai.prefix!==undefined)S.settings.prefix=String(u.cai.prefix||"");
+    S.ver=j.ver||0;S.draft={};
+    save({local:true});renderAll();hideConflict();
+    setSync("ok",`Đã tải về ${u.groups.reduce((a,g)=>a+g.items.length,0)} mã hàng · bản ${S.ver}`);
+  }catch(e){setSync("err",String(e.message||e))}
+}
+async function syncPush(force){
+  if(!syncOn()||syncBusy)return;
+  syncBusy=true;setSync("busy");
+  try{
+    const j=await callSync({action:"push",ver:force?-1:(S.ver||0),data:packState()});
+    if(j.conflict){
+      setSync("conflict");showConflict(j.ver);
+      return;
+    }
+    S.ver=j.ver;save({local:true});hideConflict();
+    setSync("ok","Đã lưu lên Sheets · bản "+S.ver);
+  }catch(e){setSync("err",String(e.message||e))}
+  finally{syncBusy=false}
+}
+/** Gọi sau mỗi thay đổi; gom lại để không bắn liên tục khi đang gõ. */
+function syncSoon(){
+  if(!syncOn())return;
+  clearTimeout(syncT);
+  syncT=setTimeout(()=>syncPush(false),1800);
+}
+function showConflict(ver){
+  const box=document.getElementById("conflict");
+  box.hidden=false;
+  box.innerHTML=`<b>Máy khác vừa sửa dữ liệu trên Sheets (bản ${ver}).</b>
+    <span class="note">Chọn giữ bên nào — thao tác này không hoàn tác được.</span>
+    <button class="btn sm" id="cfPull">Lấy bản trên Sheets, bỏ thay đổi ở máy này</button>
+    <button class="btn sm warn" id="cfPush">Ghi đè Sheets bằng dữ liệu máy này</button>`;
+}
+function hideConflict(){const b=document.getElementById("conflict");b.hidden=true;b.innerHTML=""}
 
 /* ═══════════ giao diện ═══════════ */
 let mode="view";
@@ -808,6 +962,17 @@ document.addEventListener("click",async e=>{
   }
   if(d.undo){undo(d.undo);return}
   if(d.unhuy){huyUndo(d.unhuy);return}
+  if(id==="syncPull"||id==="cfPull"){syncPull(false);return}
+  if(id==="syncPush"){syncPush(false);return}
+  if(id==="cfPush"){
+    if(confirm("Ghi đè toàn bộ dữ liệu trên Sheets bằng dữ liệu máy này? Thay đổi của máy kia sẽ mất."))
+      syncPush(true);
+    return;
+  }
+  if(id==="syncChip"){
+    if(!syncOn()){toast("Chưa đặt địa chỉ Google Sheets — kéo xuống mục Cài đặt");return}
+    syncPull(false);return;
+  }
   if(id==="huyFind"){huyFind();return}
   if(id==="huyGo"){huyApply();return}
   if(id==="huyClr"){huyHits=null;document.getElementById("huyOut").innerHTML="";return}
@@ -849,8 +1014,13 @@ document.addEventListener("click",async e=>{
   if(id==="expJson"){dl(`sao-luu-kho-${todayKey()}.json`,JSON.stringify(S),"application/json");toast("Đã tải file sao lưu");return}
   if(id==="impJson"){document.getElementById("jsonIn").click();return}
   if(id==="reset"){
-    if(confirm("Xoá toàn bộ dữ liệu và quay về bảng F50 Yamal ban đầu?")){
-      S=seed();save();renderAll();toast("Đã làm lại từ đầu")}
+    const canhbao=syncOn()
+      ? "Xoá toàn bộ dữ liệu và quay về bảng F50 Yamal ban đầu?\n\nĐANG NỐI GOOGLE SHEETS: bảng trên Sheets cũng sẽ bị ghi đè, các máy khác mất theo. Nên tải file sao lưu trước."
+      : "Xoá toàn bộ dữ liệu và quay về bảng F50 Yamal ban đầu?";
+    if(confirm(canhbao)){
+      const keep={syncUrl:S.settings.syncUrl,syncToken:S.settings.syncToken},v=S.ver;
+      S=seed();Object.assign(S.settings,keep);S.ver=v;
+      save();renderAll();toast("Đã làm lại từ đầu")}
     return;
   }
 });
@@ -871,7 +1041,7 @@ document.addEventListener("input",e=>{
     S.draft[pid]=S.draft[pid]||{};
     const v=Math.max(0,+t.value||0);
     if(v)S.draft[pid][s]=v;else delete S.draft[pid][s];
-    save();renderFoot();return;
+    save({local:true});renderFoot();return;
   }
   if(t.id==="szList"){
     const arr=[...new Set(t.value.split(/[^\d]+/).filter(Boolean).map(Number))].sort((a,b)=>a-b);
@@ -880,6 +1050,9 @@ document.addEventListener("input",e=>{
   }
   if(t.id==="lowVal"){S.settings.low=Math.max(0,+t.value||0);save();renderBoard();return}
   if(t.id==="pfx"){S.settings.prefix=t.value.trim();save();return}
+  if(t.id==="syncUrl"){S.settings.syncUrl=t.value.trim();save({local:true});
+    setSync(syncOn()?"ok":"off","");return}
+  if(t.id==="syncToken"){S.settings.syncToken=t.value.trim();save({local:true});return}
 });
 document.addEventListener("change",e=>{
   const t=e.target;
@@ -913,10 +1086,14 @@ function renderAll(){
   document.getElementById("szList").value=SZ().join(",");
   document.getElementById("lowVal").value=S.settings.low;
   document.getElementById("pfx").value=S.settings.prefix;
+  document.getElementById("syncUrl").value=S.settings.syncUrl||"";
+  document.getElementById("syncToken").value=S.settings.syncToken||"";
   renderBoard();renderLog();
 }
 (function(){
   try{const th=localStorage.getItem(KEY+".theme");if(th)document.documentElement.setAttribute("data-theme",th)}catch(e){}
   renderAll();
+  if(syncOn()){setSync("busy","Đang tải từ Sheets…");syncPull(true)}
+  else setSync("off","");
 })();
 </script>
