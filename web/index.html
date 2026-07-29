@@ -138,7 +138,14 @@ table.list thead th.n{font-family:var(--sans)}
 table.list code{font-family:var(--mono);font-size:12.5px}
 table.list tfoot td{background:var(--sunk);font-weight:640}
 #conflict{background:var(--low-soft);border:1px solid var(--low);border-radius:11px;padding:13px 16px;margin-bottom:16px;display:flex;gap:12px;flex-wrap:wrap;align-items:center}
-#conflict[hidden]{display:none}   /* phải có: display:flex ở trên đè mất thuộc tính hidden */
+#conflict[hidden]{display:none}
+#imgModal{position:fixed;inset:0;z-index:80;background:rgba(21,24,29,.55);display:grid;place-items:center;padding:16px}
+#imgModal[hidden]{display:none}
+#imgModal .sheet{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;max-width:440px;width:100%;box-shadow:var(--shadow)}
+#imgModal h3{margin:0 0 4px;font-size:15px;font-weight:660}
+#imgModal .prev{width:100%;aspect-ratio:4/3;border-radius:8px;background:var(--sunk);margin:12px 0;overflow:hidden;display:grid;place-items:center}
+#imgModal .prev img{width:100%;height:100%;object-fit:cover}
+#imgModal .prev span{font-size:12.5px;color:var(--ink3)}   /* phải có: display:flex ở trên đè mất thuộc tính hidden */
 #conflict b{color:var(--low);font-size:13.5px}
 #syncChip.ok{border-color:var(--act);color:var(--act)}
 #syncChip.err{border-color:var(--lock);color:var(--lock)}
@@ -258,6 +265,22 @@ table.list tr.huy code{text-decoration:line-through}
     <p class="note" style="margin:8px 0 0">Dữ liệu nằm trong trình duyệt của máy đang mở, không tự đồng bộ sang máy khác. Nên tải file sao lưu định kỳ.</p>
   </div>
 </section>
+</div>
+<div id="imgModal" hidden role="dialog" aria-modal="true" aria-label="Ảnh sản phẩm">
+  <div class="sheet">
+    <h3>Ảnh sản phẩm</h3>
+    <p class="note" id="imWho">—</p>
+    <div class="prev" id="imPrev"><span>chưa có ảnh</span></div>
+    <label><span class="lbl">Dán link ảnh</span>
+      <input type="text" id="imUrl" placeholder="https://… (chuột phải vào ảnh trên TikTok Shop → Sao chép địa chỉ ảnh)"></label>
+    <div class="bar" style="padding:12px 0 0">
+      <button class="btn pri" id="imSave">Lưu link</button>
+      <button class="btn" id="imFile">Chọn file từ máy</button>
+      <button class="btn warn" id="imDel">Xoá ảnh</button>
+      <button class="btn" id="imClose">Đóng</button>
+    </div>
+    <p class="note" style="margin:10px 0 0">Dùng link thì nhẹ hơn nhiều và đồng bộ nhanh; chọn file thì ảnh nằm hẳn trong dữ liệu, không sợ bên kia xoá mất.</p>
+  </div>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
@@ -583,6 +606,29 @@ async function syncPush(force){
   }catch(e){setSync("err",String(e.message||e))}
   finally{syncBusy=false}
 }
+/** Quay lại tab thì tải bản mới nhất, để máy mở sẵn không nhìn nhầm số cũ. */
+let lastPull=0;
+async function syncRefresh(){
+  if(!syncOn()||syncBusy||document.hidden)return;
+  if(Date.now()-lastPull<8000)return;
+  lastPull=Date.now();
+  try{
+    const j=await callSync({action:"pull"});
+    if((j.ver||0)===(S.ver||0))return;          // chưa ai sửa, khỏi động vào
+    if(draftTotal()>0||pending){                 // đang dở việc thì hỏi, không tự đè
+      setSync("conflict");showConflict(j.ver);return;
+    }
+    const u=unpackState(j.data||{});
+    if(!u.groups.length)return;
+    S.groups=u.groups;S.moves=u.moves;S.settings.sizes=u.sizes;
+    S.ver=j.ver||0;save({local:true});renderAll();hideConflict();
+    setSync("ok","Vừa tải bản mới từ Sheets · bản "+S.ver);
+    toast("Máy khác vừa cập nhật — đã tải bản mới về");
+  }catch(e){/* mất mạng thì thôi, giữ nguyên dữ liệu đang có */}
+}
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)syncRefresh()});
+window.addEventListener("focus",syncRefresh);
+
 /** Gọi sau mỗi thay đổi; gom lại để không bắn liên tục khi đang gõ. */
 function syncSoon(){
   if(!syncOn())return;
@@ -686,8 +732,37 @@ function renderFoot(){
   }
 }
 
-/* ---------- ảnh sản phẩm: thu nhỏ trước khi lưu ---------- */
-function pickImage(itemId){
+/* ---------- ảnh sản phẩm: dán link hoặc chọn file ---------- */
+let imgFor=null;
+const okImgSrc=v=>/^https?:\/\//i.test(v)||/^data:image\//i.test(v);
+function itemById(id){const x=items().find(v=>v.it.id===id);return x?x.it:null}
+
+function openImg(itemId){
+  const it=itemById(itemId);if(!it)return;
+  imgFor=itemId;
+  document.getElementById("imWho").textContent=it.sku+(it.ten?" · "+it.ten:"");
+  document.getElementById("imUrl").value=/^https?:/i.test(it.img||"")?it.img:"";
+  drawPrev(it.img||"");
+  document.getElementById("imgModal").hidden=false;
+  document.getElementById("imUrl").focus();
+}
+function drawPrev(src){
+  const b=document.getElementById("imPrev");
+  b.innerHTML=src?`<img src="${esc(src)}" alt="">`:'<span>chưa có ảnh</span>';
+}
+function closeImg(){document.getElementById("imgModal").hidden=true;imgFor=null}
+function setImg(src){
+  const it=itemById(imgFor);if(!it)return;
+  it.img=src;save();renderBoard();drawPrev(src);
+}
+function saveImgLink(){
+  const v=document.getElementById("imUrl").value.trim();
+  if(!v){toast("Chưa dán link nào");return}
+  if(!okImgSrc(v)){toast("Link phải bắt đầu bằng http:// hoặc https://");return}
+  setImg(v);closeImg();toast("Đã lưu link ảnh");
+}
+/** Chọn file thì thu nhỏ trước khi lưu, tránh phình bộ nhớ và chậm đồng bộ. */
+function pickImageFile(){
   const inp=document.createElement("input");
   inp.type="file";inp.accept="image/*";
   inp.onchange=()=>{
@@ -699,8 +774,7 @@ function pickImage(itemId){
         const W=200,H=Math.max(1,Math.round(im.height*W/im.width));
         const cv=document.createElement("canvas");cv.width=W;cv.height=H;
         cv.getContext("2d").drawImage(im,0,0,W,H);
-        const it=items().find(x=>x.it.id===itemId);
-        if(it){it.it.img=cv.toDataURL("image/jpeg",.72);save();renderBoard();toast("Đã cập nhật ảnh")}
+        setImg(cv.toDataURL("image/jpeg",.72));closeImg();toast("Đã cập nhật ảnh");
       };
       im.onerror=()=>toast("Không đọc được ảnh này");
       im.src=fr.result;
@@ -711,7 +785,7 @@ function pickImage(itemId){
 }
 
 /* ---------- nạp PDF ---------- */
-let pending=null;
+let pending=null,pendingMeta={bad:0,nfile:0};
 async function handleFiles(files){
   const list=[...files].filter(f=>/pdf$/i.test(f.name)||f.type==="application/pdf");
   if(!list.length){toast("Chỉ nhận file PDF");return}
@@ -738,9 +812,11 @@ async function handleFiles(files){
   rows.forEach(r=>{const k=r.sku+"|"+r.size+"|"+(r.track||r.order||"");
     if(map[k])map[k].qty+=r.qty;else map[k]=Object.assign({},r)});
   pending=Object.values(map).sort((a,b)=>a.sku.localeCompare(b.sku)||a.size-b.size);
-  renderPending(bad,list.length);
+  pendingMeta={bad,nfile:list.length};
+  renderPending();
 }
-function renderPending(bad,nfile){
+function renderPending(){
+  const bad=pendingMeta.bad,nfile=pendingMeta.nfile;
   const out=document.getElementById("pdfOut");
   if(!pending||!pending.length){out.innerHTML="";return}
   let okQty=0,missQty=0;
@@ -776,7 +852,7 @@ function renderPending(bad,nfile){
         Trừ cả dòng không đủ tồn (cho phép tồn âm để đối chiếu sau)</label>
     </div>`;
 }
-let allowNeg=false;
+let allowNeg=true;   /* mặc định trừ cả dòng thiếu, để tồn âm rồi đối chiếu sau */
 function applyOut(){
   if(!pending)return;
   let done=0,skip=0;
@@ -931,7 +1007,8 @@ function exportCsv(){
 /* ═══════════ sự kiện ═══════════ */
 document.addEventListener("click",async e=>{
   const t=e.target,btn=t.closest("button"),ph=t.closest("[data-img]");
-  if(ph){pickImage(ph.dataset.img);return}
+  if(t.id==="imgModal"){closeImg();return}
+  if(ph){openImg(ph.dataset.img);return}
   const mb=t.closest("#modes button");
   if(mb){
     mode=mb.dataset.m;
@@ -962,6 +1039,10 @@ document.addEventListener("click",async e=>{
   }
   if(d.undo){undo(d.undo);return}
   if(d.unhuy){huyUndo(d.unhuy);return}
+  if(id==="imSave"){saveImgLink();return}
+  if(id==="imFile"){pickImageFile();return}
+  if(id==="imDel"){setImg("");closeImg();toast("Đã xoá ảnh");return}
+  if(id==="imClose"){closeImg();return}
   if(id==="syncPull"||id==="cfPull"){syncPull(false);return}
   if(id==="syncPush"){syncPush(false);return}
   if(id==="cfPush"){
@@ -1056,7 +1137,7 @@ document.addEventListener("input",e=>{
 });
 document.addEventListener("change",e=>{
   const t=e.target;
-  if(t.id==="negChk"){allowNeg=t.checked;renderPending(0,0);return}
+  if(t.id==="negChk"){allowNeg=t.checked;renderPending();return}
   if(t.id==="pdfIn"&&t.files.length){handleFiles(t.files);t.value="";return}
   if(t.id==="jsonIn"&&t.files[0]){
     const fr=new FileReader();
@@ -1071,6 +1152,13 @@ document.addEventListener("change",e=>{
     fr.readAsText(t.files[0]);t.value="";
   }
 });
+/* phím tắt cho hộp ảnh */
+document.addEventListener("keydown",e=>{
+  if(!imgFor)return;
+  if(e.key==="Escape"){closeImg();return}
+  if(e.key==="Enter"&&e.target.id==="imUrl"){e.preventDefault();saveImgLink()}
+});
+
 /* vùng thả file */
 const drop=document.getElementById("drop");
 drop.addEventListener("click",()=>document.getElementById("pdfIn").click());

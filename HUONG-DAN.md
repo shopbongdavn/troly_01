@@ -146,11 +146,22 @@ giữ bên nào:
 - *Lấy bản trên Sheets* — bỏ thay đổi chưa lưu ở máy này
 - *Ghi đè Sheets* — lấy dữ liệu máy này làm chuẩn, thay đổi của máy kia mất
 
-Cách tránh: mỗi máy mở trang thì tải về trước khi làm.
+Máy đang mở sẵn sẽ **tự tải bản mới** mỗi khi bạn quay lại tab đó, nên thường
+không phải làm gì. Chỉ khi đang gõ dở số lượng đặt hàng hoặc đang xem bảng đối
+chiếu PDF thì nó dừng lại hỏi, để khỏi cuốn mất việc đang làm.
 
 **Sửa thẳng trong Google Sheets được**, nhưng phải làm lúc không máy nào đang mở
 phần mềm, rồi bấm *Tải từ Sheets về máy*. Đừng thêm/bớt cột ở tab `Kho` — muốn
 đổi dải size thì sửa trong phần mềm rồi để nó ghi lên.
+
+**Ảnh sản phẩm.** Bấm vào ô ảnh có hai cách: dán link ảnh, hoặc chọn file từ máy.
+Dán link nhẹ hơn nhiều và đồng bộ nhanh — chuột phải vào ảnh trên TikTok Shop rồi
+"Sao chép địa chỉ ảnh". Chọn file thì ảnh nằm hẳn trong dữ liệu, không sợ bên kia
+xoá mất, nhưng làm file sao lưu nặng lên.
+
+**Tồn âm.** Khi nạp PDF, ô *Trừ cả dòng không đủ tồn* đã tick sẵn, nên đơn nào
+cũng trừ được kể cả khi bảng chưa kịp cập nhật. Ô nào âm sẽ tô đỏ nhạt — đó là
+dấu hiệu cần kiểm lại kho, không phải lỗi.
 
 **Vẫn nên tải file sao lưu** định kỳ ở mục Cài đặt. Sheets có lịch sử sửa đổi,
 nhưng file `.json` khôi phục nhanh hơn nhiều.
