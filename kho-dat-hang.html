@@ -136,6 +136,8 @@ table.list td.n,table.list th.n{text-align:right;font-family:var(--mono);font-va
 table.list thead th.n{font-family:var(--sans)}
 table.list code{font-family:var(--mono);font-size:12.5px}
 table.list tfoot td{background:var(--sunk);font-weight:640}
+table.list tr.huy td{opacity:.62}
+table.list tr.huy code{text-decoration:line-through}
 
 .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(150%);background:var(--ink);color:var(--bg);padding:11px 18px;border-radius:99px;font-size:13.5px;font-weight:560;box-shadow:var(--shadow);z-index:60;transition:transform .22s cubic-bezier(.2,.9,.3,1.2);max-width:92vw;text-align:center}
 .toast.on{transform:translateX(-50%) translateY(0)}
@@ -160,6 +162,7 @@ table.list tfoot td{background:var(--sunk);font-weight:640}
   <div class="stats">
     <div class="stat"><span class="lbl">Tồn kho</span><b id="kTon">0</b></div>
     <div class="stat"><span class="lbl">Xuất hôm nay</span><b id="kOut">0</b></div>
+    <div class="stat"><span class="lbl">Huỷ hôm nay</span><b class="warn" id="kHuy">0</b></div>
     <div class="stat"><span class="lbl">Ô khoá</span><b class="lock" id="kLock">0</b></div>
     <button class="btn sm noprint" id="themeBtn" title="Đổi nền sáng/tối">◐</button>
   </div>
@@ -192,6 +195,19 @@ table.list tfoot td{background:var(--sunk);font-weight:640}
 </section>
 
 <section class="card">
+  <h2>Huỷ đơn — hoàn hàng về kho <span class="hint">tìm theo mã vận đơn, trừ khỏi đơn xuất và cộng lại tồn</span></h2>
+  <div class="pad">
+    <label><span class="lbl">Mã vận đơn</span>
+      <textarea id="huyIn" rows="3" placeholder="862174934553&#10;862142504553&#10;mỗi dòng một mã — dán được cả mã đơn hàng"></textarea></label>
+    <div class="bar" style="padding:12px 0 0">
+      <button class="btn pri" id="huyFind">Tìm đơn</button>
+      <span class="note">Dán mã vận đơn của những đơn bị huỷ ngang, tìm xong xem kỹ rồi mới xác nhận.</span>
+    </div>
+    <div id="huyOut"></div>
+  </div>
+</section>
+
+<section class="card">
   <h2>Nhật ký <span class="hint" id="logHint"></span></h2>
   <div id="logBox"></div>
 </section>
@@ -204,8 +220,8 @@ table.list tfoot td{background:var(--sunk);font-weight:640}
         <input type="text" id="szList" placeholder="38,39,40,41,42,43,44"></label>
       <label><span class="lbl">Cảnh báo khi tồn ≤</span>
         <input type="number" id="lowVal" min="0"></label>
-      <label><span class="lbl">Tiền tố mã SKU trên phiếu</span>
-        <input type="text" id="pfx" placeholder="IJ"></label>
+      <label><span class="lbl">Chỉ nhận SKU bắt đầu bằng</span>
+        <input type="text" id="pfx" placeholder="để trống = tự nhận mọi mã"></label>
     </div>
     <div class="bar" style="padding:16px 0 0">
       <button class="btn" id="expJson">Tải file sao lưu</button>
@@ -214,7 +230,8 @@ table.list tfoot td{background:var(--sunk);font-weight:640}
       <button class="btn warn" id="reset">Xoá hết, làm lại từ đầu</button>
       <input type="file" id="jsonIn" accept="application/json" hidden>
     </div>
-    <p class="note" style="margin:12px 0 0">Dữ liệu nằm trong trình duyệt của máy đang mở, không tự đồng bộ sang máy khác. Nên tải file sao lưu định kỳ.</p>
+    <p class="note" style="margin:12px 0 0">Để trống ô tiền tố thì mọi mã SKU trên phiếu đều được nhận — dùng khi hàng có nhiều tiền tố như <code>ij-</code>, <code>kt-</code>, <code>mer-</code>. Nếu bị nhận nhầm, điền các tiền tố cần lấy, cách nhau bằng dấu phẩy.</p>
+    <p class="note" style="margin:8px 0 0">Dữ liệu nằm trong trình duyệt của máy đang mở, không tự đồng bộ sang máy khác. Nên tải file sao lưu định kỳ.</p>
   </div>
 </section>
 </div>
@@ -337,32 +354,52 @@ async function pdfPages(u8){
   }
   return pages;
 }
+/* Mã vận đơn được in lặp 6 lần dưới mã vạch nên dính thành một chuỗi số dài.
+   Dò chu kỳ lặp để tách ra, rồi chọn đúng pha bằng chỗ mã được in riêng ở nơi khác. */
+function waybillOf(txt){
+  const runs=(txt.replace(/\s/g,"").match(/\d{6,}/g)||[]);
+  const long=runs.slice().sort((a,b)=>b.length-a.length)[0]||"";
+  const cands=[];
+  for(let p=10;p<=14;p++)for(let o=0;o+p*3<=long.length;o++){
+    const u=long.substr(o,p);let k=1;
+    while(long.substr(o+k*p,p)===u)k++;
+    if(k>=3)cands.push({u,k});
+  }
+  const anchored=cands.filter(c=>runs.some(r=>r!==long&&r.startsWith(c.u)));
+  const pick=(anchored.length?anchored:cands).sort((a,b)=>b.k-a.k||b.u.length-a.u.length)[0];
+  return {track:pick?pick.u:"",digits:runs.join(" ")};
+}
 /* Bóc SKU + size + SL. Trên phiếu J&T: "…Tím MG,40IJ-f50mg-t-401Qty Total: 1" */
 async function readLabels(u8){
-  const pages=await pdfPages(u8),rows=[],pfx=(S.settings.prefix||"IJ").replace(/[^\w-]/g,"");
+  const pages=await pdfPages(u8),rows=[];
+  const pfx=(S.settings.prefix||"").split(/[,;\s]+/).map(v=>v.replace(/[^\w-]/g,"")).filter(Boolean);
   /* không dùng \b: trên phiếu mã dính liền số phía trước, ví dụ "TímMG,40IJ-f50mg-t-40" */
-  const tokRe=new RegExp(pfx+"-[A-Za-z0-9-]+","gi");
+  const tokRe=pfx.length
+    ? new RegExp("(?:"+pfx.join("|")+")-[A-Za-z0-9-]+","gi")
+    : /[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+/g;
   for(const raw of pages){
     /* bỏ hết dấu cách để mã SKU không bị ngắt quãng — mốc tìm kiếm cũng bỏ dấu cách theo */
     const t=raw.replace(/\s/g,"");
     const order=(/OrderID:?(\d{6,})/.exec(t)||[])[1]||"";
+    const wb=waybillOf(raw);
     const head=t.indexOf("SellerSKU");
     const seg=head>=0?t.slice(head+9):t;
     const cut=seg.indexOf("QtyTotal");
     const zone=cut>0?seg.slice(0,cut):seg;
     for(const tk of zone.match(tokRe)||[]){
       const m=/^(.*?)-(\d{2})(\d{0,3})$/.exec(tk);
-      if(!m)continue;
+      if(!m||!m[1])continue;
       const size=+m[2];
       if(size<20||size>50)continue;
-      rows.push({sku:m[1].toLowerCase(),size,qty:Math.max(1,+m[3]||1),order});
+      rows.push({sku:m[1].toLowerCase(),size,qty:Math.max(1,+m[3]||1),order,
+                 track:wb.track,digits:wb.digits});
     }
   }
   return rows;
 }
 
 /* ═══════════ dữ liệu ═══════════ */
-const DEFAULTS={sizes:[38,39,40,41,42,43,44],low:2,prefix:"IJ"};
+const DEFAULTS={sizes:[38,39,40,41,42,43,44],low:2,prefix:""};
 function seed(){
   const mk=(sku,ten,q,lock)=>{
     const sizes={};
@@ -405,7 +442,8 @@ const totItem=it=>SZ().reduce((a,s)=>a+(cellOf(it,s).q||0),0);
 const totGroup=g=>g.items.reduce((a,it)=>a+totItem(it),0);
 const totAll=()=>S.groups.reduce((a,g)=>a+totGroup(g),0);
 const lockCount=()=>items().reduce((a,x)=>a+SZ().filter(s=>cellOf(x.it,s).lock).length,0);
-const outToday=()=>S.moves.filter(m=>m.d===todayKey()&&m.t==="out").reduce((a,m)=>a+m.q,0);
+const outToday=()=>S.moves.filter(m=>m.d===todayKey()&&m.t==="out"&&!m.huy).reduce((a,m)=>a+m.q,0);
+const huyToday=()=>S.moves.filter(m=>m.t==="out"&&m.huy&&m.huy.d===todayKey()).reduce((a,m)=>a+m.q,0);
 
 /* ═══════════ giao diện ═══════════ */
 let mode="view";
@@ -423,6 +461,7 @@ function toast(msg){
 function renderStats(){
   document.getElementById("kTon").textContent=totAll();
   document.getElementById("kOut").textContent=outToday();
+  document.getElementById("kHuy").textContent=huyToday();
   document.getElementById("kLock").textContent=lockCount();
   const d=new Date();
   document.getElementById("sub").textContent=
@@ -542,7 +581,7 @@ async function handleFiles(files){
   }
   /* gộp các dòng trùng SKU + size */
   const map={};
-  rows.forEach(r=>{const k=r.sku+"|"+r.size;
+  rows.forEach(r=>{const k=r.sku+"|"+r.size+"|"+(r.track||r.order||"");
     if(map[k])map[k].qty+=r.qty;else map[k]=Object.assign({},r)});
   pending=Object.values(map).sort((a,b)=>a.sku.localeCompare(b.sku)||a.size-b.size);
   renderPending(bad,list.length);
@@ -594,7 +633,8 @@ function applyOut(){
     const c=cellOf(f.it,r.size),have=c.q||0;
     if(have<r.qty&&!allowNeg){skip+=r.qty;return}
     c.q=have-r.qty;
-    S.moves.push({id:uid(),d:todayKey(),h:now,t:"out",sku:f.it.sku,size:r.size,q:r.qty,order:r.order});
+    S.moves.push({id:uid(),d:todayKey(),h:now,t:"out",sku:f.it.sku,size:r.size,q:r.qty,
+      order:r.order,track:r.track||"",digits:r.digits||""});
     done+=r.qty;
   });
   save();pending=null;document.getElementById("pdfOut").innerHTML="";
@@ -602,28 +642,120 @@ function applyOut(){
   toast(skip?`Đã trừ ${done} đôi · bỏ qua ${skip} đôi chưa xử lý được`:`Đã trừ ${done} đôi khỏi kho`);
 }
 
+
+/* ---------- huỷ đơn: tìm theo mã vận đơn rồi hoàn hàng về kho ---------- */
+let huyHits=null;
+/** Một lượt xuất khớp mã khi trùng mã vận đơn, mã đơn hàng, hoặc mã nằm trong
+    dãy số đọc được trên phiếu (phòng khi tách mã vận đơn lệch vài chữ số). */
+function matchMove(m,code){
+  if(m.t!=="out")return false;
+  const c=code.replace(/\D/g,"");
+  if(!c||c.length<6)return false;
+  if((m.track||"")===c)return true;
+  if((m.order||"")===c)return true;
+  return ((m.digits||"").replace(/\D/g,"")).includes(c);
+}
+function huyFind(){
+  const codes=[...new Set((document.getElementById("huyIn").value||"")
+    .split(/[^\d]+/).filter(v=>v.length>=6))];
+  const out=document.getElementById("huyOut");
+  if(!codes.length){
+    huyHits=null;
+    out.innerHTML='<p class="empty">Chưa nhập mã nào. Mỗi dòng một mã vận đơn.</p>';
+    return;
+  }
+  huyHits=codes.map(c=>({code:c,moves:S.moves.filter(m=>matchMove(m,c))}));
+  renderHuy();
+}
+function renderHuy(){
+  const out=document.getElementById("huyOut");
+  if(!huyHits){out.innerHTML="";return}
+  let canQty=0,canCnt=0;
+  const rows=[];
+  huyHits.forEach(h=>{
+    if(!h.moves.length){rows.push({code:h.code,st:"none"});return}
+    h.moves.forEach(m=>{
+      if(!m.huy){canQty+=m.q;canCnt++}
+      rows.push({code:h.code,m,st:m.huy?"done":"can"});
+    });
+  });
+  const badge={can:'<span class="pill ok">Sẽ hoàn về kho</span>',
+    done:'<span class="pill mut">Đã huỷ trước đó</span>',
+    none:'<span class="pill bad">Không tìm thấy đơn xuất</span>'};
+  out.innerHTML=`
+    <div style="margin-top:16px" class="hr"></div>
+    <div class="gscroll"><table class="list"><thead><tr>
+      <th>Mã đã nhập</th><th>Mã vận đơn</th><th>Mã SKU</th>
+      <th class="n">Size</th><th class="n">SL</th><th>Ngày xuất</th><th>Trạng thái</th></tr></thead>
+      <tbody>${rows.map(r=>`<tr>
+        <td><code>${esc(r.code)}</code></td>
+        <td><code>${esc(r.m?(r.m.track||r.m.order||"—"):"—")}</code></td>
+        <td>${r.m?`<code>${esc(r.m.sku)}</code>`:"—"}</td>
+        <td class="n">${r.m?r.m.size:"–"}</td><td class="n">${r.m?r.m.q:"–"}</td>
+        <td class="num">${r.m?r.m.d:"–"}</td><td>${badge[r.st]}</td></tr>`).join("")}
+      </tbody>
+      <tfoot><tr><td colspan="4">${huyHits.length} mã đã nhập</td>
+        <td class="n">${canQty}</td><td colspan="2">${canCnt} lượt xuất sẽ được hoàn về kho</td></tr></tfoot>
+    </table></div>
+    <div class="bar" style="padding:14px 0 0">
+      <button class="btn pri" id="huyGo" ${canCnt?"":"disabled"}>Xác nhận huỷ — hoàn ${canQty} đôi về kho</button>
+      <button class="btn" id="huyClr">Bỏ qua</button>
+    </div>`;
+}
+function huyApply(){
+  if(!huyHits)return;
+  const seen=new Set();let n=0,q=0;
+  const now=new Date();
+  huyHits.forEach(h=>h.moves.forEach(m=>{
+    if(m.huy||seen.has(m.id))return;
+    seen.add(m.id);
+    const f=findSku(m.sku);
+    if(f)cellOf(f.it,m.size).q=(cellOf(f.it,m.size).q||0)+m.q;
+    m.huy={d:todayKey(),h:now.toTimeString().slice(0,5)};
+    n++;q+=m.q;
+  }));
+  save();huyHits=null;
+  document.getElementById("huyIn").value="";
+  document.getElementById("huyOut").innerHTML="";
+  renderBoard();renderLog();
+  toast(n?`Đã huỷ ${n} lượt xuất · hoàn ${q} đôi về kho`:"Không có đơn nào để huỷ");
+}
+/** Bỏ đánh dấu huỷ: trừ lại số đã hoàn, đưa lượt xuất về như cũ. */
+function huyUndo(id){
+  const m=S.moves.find(v=>v.id===id);
+  if(!m||!m.huy)return;
+  const f=findSku(m.sku);
+  if(f)cellOf(f.it,m.size).q=(cellOf(f.it,m.size).q||0)-m.q;
+  delete m.huy;save();renderBoard();renderLog();toast("Đã bỏ đánh dấu huỷ");
+}
+
 /* ---------- nhật ký ---------- */
 function renderLog(){
   const box=document.getElementById("logBox");
   const log=S.moves.slice().reverse().slice(0,80);
   document.getElementById("logHint").textContent=
-    S.moves.length?`${S.moves.length} lượt · xuất hôm nay ${outToday()} đôi`:"";
+    S.moves.length?`${S.moves.length} lượt · xuất hôm nay ${outToday()} đôi · huỷ ${huyToday()} đôi`:"";
   if(!log.length){box.innerHTML='<p class="empty">Chưa có phát sinh nào. Nạp file PDF hoặc bấm đặt hàng để bắt đầu.</p>';return}
   box.innerHTML=`<div class="gscroll"><table class="list">
-    <thead><tr><th>Ngày</th><th>Giờ</th><th>Loại</th><th>Mã SKU</th>
+    <thead><tr><th>Ngày</th><th>Giờ</th><th>Loại</th><th>Mã vận đơn</th><th>Mã SKU</th>
       <th class="n">Size</th><th class="n">SL</th><th>Ghi chú</th><th class="noprint"></th></tr></thead>
-    <tbody>${log.map(m=>`<tr>
+    <tbody>${log.map(m=>`<tr${m.huy?' class="huy"':""}>
       <td class="num">${m.d}</td><td class="num">${m.h||""}</td>
-      <td>${m.t==="out"?'<span class="pill low">Xuất</span>':'<span class="pill ok">Đặt về</span>'}</td>
+      <td>${m.huy?'<span class="pill bad">Đã huỷ</span>'
+             :m.t==="out"?'<span class="pill low">Xuất</span>':'<span class="pill ok">Đặt về</span>'}</td>
+      <td><code>${esc(m.track||"—")}</code></td>
       <td><code>${esc(m.sku)}</code></td><td class="n">${m.size}</td><td class="n">${m.q}</td>
-      <td class="note">${m.order?"Đơn "+esc(m.order):(m.note||"")}</td>
-      <td class="noprint"><button class="btn sm warn" data-undo="${m.id}" title="Hoàn tác dòng này">✕</button></td>
+      <td class="note">${m.huy?`Hoàn về kho ${esc(m.huy.d)}`:(m.order?"Đơn "+esc(m.order):(m.note||""))}</td>
+      <td class="noprint">${m.huy
+        ? `<button class="btn sm" data-unhuy="${m.id}" title="Bỏ đánh dấu huỷ">↶</button>`
+        : `<button class="btn sm warn" data-undo="${m.id}" title="Hoàn tác dòng này">✕</button>`}</td>
     </tr>`).join("")}</tbody></table></div>`;
 }
 function undo(id){
   const i=S.moves.findIndex(m=>m.id===id);if(i<0)return;
   const m=S.moves[i],f=findSku(m.sku);
-  if(f){const c=cellOf(f.it,m.size);c.q=(c.q||0)+(m.t==="out"?m.q:-m.q)}
+  /* lượt đã huỷ thì tồn đã được hoàn rồi, xoá dòng không đụng tới tồn nữa */
+  if(f&&!m.huy){const c=cellOf(f.it,m.size);c.q=(c.q||0)+(m.t==="out"?m.q:-m.q)}
   S.moves.splice(i,1);save();renderBoard();renderLog();toast("Đã hoàn tác");
 }
 
@@ -675,6 +807,10 @@ document.addEventListener("click",async e=>{
     return;
   }
   if(d.undo){undo(d.undo);return}
+  if(d.unhuy){huyUndo(d.unhuy);return}
+  if(id==="huyFind"){huyFind();return}
+  if(id==="huyGo"){huyApply();return}
+  if(id==="huyClr"){huyHits=null;document.getElementById("huyOut").innerHTML="";return}
   if(id==="addItem"){
     const sku=prompt("Mã SKU (đúng như trên phiếu gửi, bỏ phần size):","ij-");
     if(!sku)return;
@@ -743,7 +879,7 @@ document.addEventListener("input",e=>{
     return;
   }
   if(t.id==="lowVal"){S.settings.low=Math.max(0,+t.value||0);save();renderBoard();return}
-  if(t.id==="pfx"){S.settings.prefix=t.value.trim()||"IJ";save();return}
+  if(t.id==="pfx"){S.settings.prefix=t.value.trim();save();return}
 });
 document.addEventListener("change",e=>{
   const t=e.target;
