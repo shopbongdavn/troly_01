@@ -124,7 +124,7 @@ thứ hai với địa chỉ khác.
 và báo `/bin/sh: 1: web: not found`.
 
 Bấm lưu và triển khai. Khoảng một phút sau được địa chỉ dạng
-`troly-01.workers.dev` hoặc `troly-01.pages.dev`. Mỗi lần đẩy code mới lên
+`dathang.<tên tài khoản>.workers.dev`. Mỗi lần đẩy code mới lên
 GitHub, Cloudflare tự dựng lại.
 
 ### B3. Kiểm tra
