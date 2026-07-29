@@ -166,5 +166,14 @@ dấu hiệu cần kiểm lại kho, không phải lỗi.
 **Vẫn nên tải file sao lưu** định kỳ ở mục Cài đặt. Sheets có lịch sử sửa đổi,
 nhưng file `.json` khôi phục nhanh hơn nhiều.
 
+**Phiên bản.** Số `v1.4` cạnh tên phần mềm là bản đang chạy. Khi Cloudflare dựng
+xong bản mới, trang đang mở sẽ hiện băng xanh *"Đã có bản mới"* kèm nút tải lại —
+kiểm mỗi phút một lần và mỗi khi quay lại tab. Bấm *Để sau* thì băng ẩn đi cho
+đến lần mở trang sau.
+
+Khi sửa code, số phiên bản phải đổi ở **cả hai chỗ**: hằng `APP_VER` trong
+`web/index.html` và `web/version.json`. Chạy `node tools/check-version.js` để kiểm
+trước khi đẩy lên — lệch nhau thì trang sẽ báo có bản mới mãi không hết.
+
 **Mất mạng vẫn dùng được.** Phần mềm chạy trên dữ liệu trong máy, chỉ phần lưu
 lên Sheets là báo lỗi. Có mạng lại thì bấm *Đưa dữ liệu máy này lên Sheets*.

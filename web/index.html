@@ -139,6 +139,12 @@ table.list code{font-family:var(--mono);font-size:12.5px}
 table.list tfoot td{background:var(--sunk);font-weight:640}
 #conflict{background:var(--low-soft);border:1px solid var(--low);border-radius:11px;padding:13px 16px;margin-bottom:16px;display:flex;gap:12px;flex-wrap:wrap;align-items:center}
 #conflict[hidden]{display:none}
+.ver{font-family:var(--mono);font-size:11px;font-weight:600;color:var(--ink3);
+     border:1px solid var(--line2);border-radius:99px;padding:1px 7px;vertical-align:middle;margin-left:7px;cursor:help}
+#newver{background:var(--act-soft);border:1px solid var(--act);border-radius:11px;padding:12px 16px;
+        margin-bottom:16px;display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+#newver[hidden]{display:none}
+#newver b{color:var(--act);font-size:13.5px}
 #imgModal{position:fixed;inset:0;z-index:80;background:rgba(21,24,29,.55);display:grid;place-items:center;padding:16px}
 #imgModal[hidden]{display:none}
 #imgModal .sheet{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;max-width:440px;width:100%;box-shadow:var(--shadow)}
@@ -171,7 +177,7 @@ table.list tr.huy code{text-decoration:line-through}
 <header class="top">
   <div class="brand">
     <div class="mark">IJ</div>
-    <div><h1>Kho &amp; Đặt hàng</h1><p id="sub">—</p></div>
+    <div><h1>Kho &amp; Đặt hàng<span class="ver" id="verChip" title="Phiên bản đang chạy">—</span></h1><p id="sub">—</p></div>
   </div>
   <div class="stats">
     <div class="stat"><span class="lbl">Tồn kho</span><b id="kTon">0</b></div>
@@ -183,6 +189,7 @@ table.list tr.huy code{text-decoration:line-through}
   </div>
 </header>
 
+<div id="newver" hidden></div>
 <div id="conflict" hidden></div>
 
 <section class="card">
@@ -287,6 +294,8 @@ table.list tr.huy code{text-decoration:line-through}
 <script>
 "use strict";
 const KEY="ijkho.v1";
+/* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
+const APP_VER="1.4", APP_TEN="ảnh bằng link, tự tải lại khi đổi tab";
 const uid=()=>Math.random().toString(36).slice(2,9);
 const todayKey=()=>new Date().toISOString().slice(0,10);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -644,6 +653,28 @@ function showConflict(ver){
     <button class="btn sm warn" id="cfPush">Ghi đè Sheets bằng dữ liệu máy này</button>`;
 }
 function hideConflict(){const b=document.getElementById("conflict");b.hidden=true;b.innerHTML=""}
+
+/* ═══════════ báo có bản mới ═══════════
+   version.json nằm cạnh trang. Cloudflare dựng lại là file đó đổi theo,
+   nên trang đang mở biết mình đã cũ mà nhắc tải lại. */
+let verT=0;
+async function checkVersion(){
+  if(Date.now()-verT<60000)return;
+  verT=Date.now();
+  try{
+    const r=await fetch("version.json?t="+Date.now(),{cache:"no-store"});
+    if(!r.ok)return;
+    const j=await r.json();
+    if(!j.ver||j.ver===APP_VER)return;
+    const box=document.getElementById("newver");
+    box.hidden=false;
+    box.innerHTML=`<b>Đã có bản mới v${esc(j.ver)}</b>
+      <span class="note">${esc(j.ten||"")} — bạn đang chạy v${APP_VER}.</span>
+      <button class="btn sm pri" id="doReload">Tải lại trang</button>
+      <button class="btn sm" id="skipReload">Để sau</button>`;
+  }catch(e){/* mở bằng file:// hoặc mất mạng thì bỏ qua */}
+}
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)checkVersion()});
 
 /* ═══════════ giao diện ═══════════ */
 let mode="view";
@@ -1039,6 +1070,8 @@ document.addEventListener("click",async e=>{
   }
   if(d.undo){undo(d.undo);return}
   if(d.unhuy){huyUndo(d.unhuy);return}
+  if(id==="doReload"){location.reload();return}
+  if(id==="skipReload"){document.getElementById("newver").hidden=true;return}
   if(id==="imSave"){saveImgLink();return}
   if(id==="imFile"){pickImageFile();return}
   if(id==="imDel"){setImg("");closeImg();toast("Đã xoá ảnh");return}
@@ -1180,7 +1213,10 @@ function renderAll(){
 }
 (function(){
   try{const th=localStorage.getItem(KEY+".theme");if(th)document.documentElement.setAttribute("data-theme",th)}catch(e){}
+  document.getElementById("verChip").textContent="v"+APP_VER;
+  document.getElementById("verChip").title="Đang chạy v"+APP_VER+" — "+APP_TEN;
   renderAll();
+  checkVersion();
   if(syncOn()){setSync("busy","Đang tải từ Sheets…");syncPull(true)}
   else setSync("off","");
 })();
