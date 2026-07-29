@@ -97,19 +97,39 @@ Cho phép Cloudflare truy cập GitHub, chọn kho `shopbongdavn/troly_01`.
 
 ### B2. Cấu hình
 
+Cloudflare hiện đưa "Connect to Git" vào **Workers**, không phải Pages. Hai loại
+dự án điền khác nhau — xem trên trang dự án của bạn có ô nào thì điền theo cột đó:
+
+**Nếu là Workers** (có các tab Bindings, Observability, và ô *Deploy command*):
+
 | Mục | Điền |
 |---|---|
-| Production branch | nhánh đang chứa code (`main` sau khi gộp) |
+| Build command | **để trống** |
+| Deploy command | `npx wrangler deploy` |
+
+File `wrangler.toml` ở gốc kho đã khai báo sẵn thư mục `web`, không cần điền
+thư mục ở đâu nữa. **Kiểm tra dòng `name` trong `wrangler.toml` có trùng tên dự
+án trên Cloudflare không** — không trùng thì Cloudflare sẽ tạo thêm một dự án
+thứ hai với địa chỉ khác.
+
+**Nếu là Pages** (có ô *Build output directory*):
+
+| Mục | Điền |
+|---|---|
 | Framework preset | None |
 | Build command | **để trống** |
 | Build output directory | `web` |
 
-Bấm **Save and Deploy**. Khoảng một phút sau được địa chỉ dạng
-`troly-01.pages.dev`. Mỗi lần đẩy code mới lên GitHub, Cloudflare tự dựng lại.
+Đừng điền `web` vào ô *Deploy command* — Cloudflare sẽ chạy nó như một câu lệnh
+và báo `/bin/sh: 1: web: not found`.
+
+Bấm lưu và triển khai. Khoảng một phút sau được địa chỉ dạng
+`troly-01.workers.dev` hoặc `troly-01.pages.dev`. Mỗi lần đẩy code mới lên
+GitHub, Cloudflare tự dựng lại.
 
 ### B3. Kiểm tra
 
-Mở địa chỉ `.pages.dev` trên điện thoại, điền địa chỉ Sheets và mã bảo vệ,
+Mở địa chỉ vừa nhận trên điện thoại, điền địa chỉ Sheets và mã bảo vệ,
 bấm **Tải từ Sheets về máy**. Phải thấy đúng số liệu như trên máy tính.
 
 ---

@@ -1,0 +1,7 @@
+# Cấu hình cho Cloudflare Workers — chỉ phục vụ trang tĩnh trong thư mục web/
+# Nếu tên dự án trên Cloudflare khác "troly-01", sửa dòng name cho khớp.
+name = "troly-01"
+compatibility_date = "2025-09-01"
+
+[assets]
+directory = "./web"
