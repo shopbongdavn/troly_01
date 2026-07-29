@@ -178,10 +178,19 @@ chiếu PDF thì nó dừng lại hỏi, để khỏi cuốn mất việc đang 
 phần mềm, rồi bấm *Tải từ Sheets về máy*. Đừng thêm/bớt cột ở tab `Kho` — muốn
 đổi dải size thì sửa trong phần mềm rồi để nó ghi lên.
 
-**Ảnh sản phẩm.** Bấm vào ô ảnh có hai cách: dán link ảnh, hoặc chọn file từ máy.
-Dán link nhẹ hơn nhiều và đồng bộ nhanh — chuột phải vào ảnh trên TikTok Shop rồi
-"Sao chép địa chỉ ảnh". Chọn file thì ảnh nằm hẳn trong dữ liệu, không sợ bên kia
-xoá mất, nhưng làm file sao lưu nặng lên.
+**Ảnh sản phẩm.** Bấm vào ô ảnh, dán link (chuột phải vào ảnh trên TikTok Shop →
+"Sao chép địa chỉ ảnh") hoặc chọn file từ máy. Cả hai cách đều **tải ảnh về, thu
+nhỏ còn khoảng 1–2 KB rồi lưu hẳn vào dữ liệu**, nên nguồn có hết hạn hay đổi thì
+ảnh vẫn còn. Link ảnh của các sàn thường có chữ ký hết hạn sau vài giờ — lưu
+nguyên link thì hôm sau ảnh biến mất, nên phần mềm không làm vậy.
+
+Việc tải hộ đi qua đường `/img` của Worker, vì trình duyệt không lấy trực tiếp
+được ảnh từ CDN của sàn. Chạy ngoài Cloudflare (mở file rời) thì không tải hộ
+được, lúc đó phần mềm báo rõ và tạm giữ link.
+
+**Chia tab.** Màn hình chia năm tab: Kho hàng, Xuất hàng, Huỷ đơn, Nhật ký, Cài
+đặt. Tab đang mở được nhớ lại cho lần sau. Tab Kho hàng có ô tìm kiếm theo mã SKU,
+tên màu hoặc nhóm hàng — cần khi danh sách dài ra.
 
 **Tồn âm.** Khi nạp PDF, ô *Trừ cả dòng không đủ tồn* đã tick sẵn, nên đơn nào
 cũng trừ được kể cả khi bảng chưa kịp cập nhật. Ô nào âm sẽ tô đỏ nhạt — đó là
@@ -190,7 +199,7 @@ dấu hiệu cần kiểm lại kho, không phải lỗi.
 **Vẫn nên tải file sao lưu** định kỳ ở mục Cài đặt. Sheets có lịch sử sửa đổi,
 nhưng file `.json` khôi phục nhanh hơn nhiều.
 
-**Phiên bản.** Số `v1.4` cạnh tên phần mềm là bản đang chạy. Khi Cloudflare dựng
+**Phiên bản.** Số `v1.7` cạnh tên phần mềm là bản đang chạy. Khi Cloudflare dựng
 xong bản mới, trang đang mở sẽ hiện băng xanh *"Đã có bản mới"* kèm nút tải lại —
 kiểm mỗi phút một lần và mỗi khi quay lại tab. Bấm *Để sau* thì băng ẩn đi cho
 đến lần mở trang sau.

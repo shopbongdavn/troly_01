@@ -48,6 +48,16 @@ button,input,select,textarea{font:inherit;color:inherit}
 .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
 .lbl{font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3)}
 
+nav.tabs{display:flex;gap:2px;overflow-x:auto;border-bottom:1px solid var(--line);margin-bottom:16px;scrollbar-width:thin}
+nav.tabs button{background:none;border:0;border-bottom:2px solid transparent;padding:10px 15px;cursor:pointer;
+  color:var(--ink2);font-size:14px;font-weight:560;white-space:nowrap;display:flex;align-items:center;gap:7px}
+nav.tabs button:hover{color:var(--ink)}
+nav.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--act);font-weight:660}
+nav.tabs .cnt{font-family:var(--mono);font-size:10.5px;font-weight:600;padding:1px 6px;border-radius:99px;background:var(--sunk2);color:var(--ink2)}
+nav.tabs .cnt.hot{background:var(--lock);color:#fff}
+[data-tab][hidden]{display:none}
+.find{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:0 16px 14px}
+.find input{max-width:320px}
 .wrap{max-width:1120px;margin:0 auto;padding:0 clamp(12px,3vw,24px) 80px}
 header.top{display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between;padding:20px 0 16px}
 .brand{display:flex;align-items:center;gap:11px}
@@ -192,7 +202,15 @@ table.list tr.huy code{text-decoration:line-through}
 <div id="newver" hidden></div>
 <div id="conflict" hidden></div>
 
-<section class="card">
+<nav class="tabs" id="tabs" role="tablist">
+  <button role="tab" data-t="kho" aria-selected="true">Kho hàng <span class="cnt" id="cntSku">0</span></button>
+  <button role="tab" data-t="xuat" aria-selected="false">Xuất hàng</button>
+  <button role="tab" data-t="huy" aria-selected="false">Huỷ đơn</button>
+  <button role="tab" data-t="log" aria-selected="false">Nhật ký <span class="cnt" id="cntLog">0</span></button>
+  <button role="tab" data-t="cai" aria-selected="false">Cài đặt</button>
+</nav>
+
+<section class="card" data-tab="kho">
   <h2>Bảng tồn kho <span class="hint" id="modeHint"></span></h2>
   <div class="bar noprint">
     <div class="seg" id="modes">
@@ -202,11 +220,15 @@ table.list tr.huy code{text-decoration:line-through}
       <button data-m="order" aria-pressed="false">Đặt hàng</button>
     </div>
   </div>
+  <div class="find noprint">
+    <input type="text" id="findQ" placeholder="Tìm theo mã SKU, tên màu hoặc nhóm hàng…" autocomplete="off">
+    <span class="note" id="findInfo"></span>
+  </div>
   <div class="gscroll" id="board"></div>
   <div class="gfoot noprint" id="gfoot"></div>
 </section>
 
-<section class="card">
+<section class="card" data-tab="xuat">
   <h2>Xuất hàng — nạp file PDF phiếu gửi <span class="hint">đọc Seller SKU trên phiếu, tự trừ kho</span></h2>
   <div class="pad">
     <div class="drop" id="drop" role="button" tabindex="0">
@@ -218,7 +240,7 @@ table.list tr.huy code{text-decoration:line-through}
   </div>
 </section>
 
-<section class="card">
+<section class="card" data-tab="huy">
   <h2>Huỷ đơn — hoàn hàng về kho <span class="hint">tìm theo mã vận đơn, trừ khỏi đơn xuất và cộng lại tồn</span></h2>
   <div class="pad">
     <label><span class="lbl">Mã vận đơn</span>
@@ -231,12 +253,12 @@ table.list tr.huy code{text-decoration:line-through}
   </div>
 </section>
 
-<section class="card">
+<section class="card" data-tab="log">
   <h2>Nhật ký <span class="hint" id="logHint"></span></h2>
   <div id="logBox"></div>
 </section>
 
-<section class="card noprint">
+<section class="card noprint" data-tab="cai">
   <h2>Cài đặt &amp; sao lưu</h2>
   <div class="pad">
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px">
@@ -287,7 +309,7 @@ table.list tr.huy code{text-decoration:line-through}
       <button class="btn warn" id="imDel">Xoá ảnh</button>
       <button class="btn" id="imClose">Đóng</button>
     </div>
-    <p class="note" style="margin:10px 0 0">Dùng link thì nhẹ hơn nhiều và đồng bộ nhanh; chọn file thì ảnh nằm hẳn trong dữ liệu, không sợ bên kia xoá mất.</p>
+    <p class="note" style="margin:10px 0 0">Dán link thì phần mềm tải ảnh về và lưu hẳn lại, nên sau này nguồn có hết hạn hay đổi thì ảnh vẫn còn.</p>
   </div>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -296,7 +318,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="1.6", APP_TEN="mở địa chỉ là nối sẵn, không phải cài từng máy";
+const APP_VER="1.7", APP_TEN="chia tab, tìm kiếm, ảnh lưu hẳn không mất";
 const uid=()=>Math.random().toString(36).slice(2,9);
 const todayKey=()=>new Date().toISOString().slice(0,10);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -733,6 +755,24 @@ async function checkVersion(){
 }
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)checkVersion()});
 
+/* ═══════════ tab ═══════════ */
+let tab=(()=>{try{return localStorage.getItem(KEY+".tab")||"kho"}catch(e){return "kho"}})();
+function doiTab(t){
+  tab=t;
+  try{localStorage.setItem(KEY+".tab",t)}catch(e){}
+  document.querySelectorAll("#tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.t===t));
+  document.querySelectorAll("[data-tab]").forEach(el=>{el.hidden=el.dataset.tab!==t});
+  scrollTo({top:0,behavior:"instant"});
+}
+function demTab(){
+  const a=document.getElementById("cntSku"),b=document.getElementById("cntLog");
+  if(a)a.textContent=items().length;
+  if(b){
+    const n=S.moves.filter(m=>m.d===todayKey()).length;
+    b.textContent=n;b.classList.toggle("hot",n>0);
+  }
+}
+
 /* ═══════════ giao diện ═══════════ */
 let mode="view";
 const HINTS={
@@ -780,9 +820,24 @@ function cellHtml(it,s){
   }
   return `<td class="${cls.join(" ")}"><span class="v">${c.lock?"N":(c.q||"")}</span></td>`;
 }
+let timKiem="";
+function khop(g,it){
+  if(!timKiem)return true;
+  const q=timKiem.toLowerCase();
+  return (g.ten+" "+it.sku+" "+(it.ten||"")).toLowerCase().includes(q);
+}
 function renderBoard(){
   const box=document.getElementById("board");
-  box.innerHTML=S.groups.map(g=>`
+  const nhom=S.groups.map(g=>({g,ds:g.items.filter(it=>khop(g,it))})).filter(x=>x.ds.length);
+  const info=document.getElementById("findInfo");
+  if(info)info.textContent=timKiem
+    ? `Thấy ${nhom.reduce((a,x)=>a+x.ds.length,0)} mã trong ${nhom.length} nhóm`
+    : `${items().length} mã hàng · ${S.groups.length} nhóm`;
+  if(!nhom.length){
+    box.innerHTML='<p class="empty">Không có mã hàng nào khớp. Xoá bớt chữ trong ô tìm kiếm.</p>';
+    renderFoot();renderStats();demTab();return;
+  }
+  box.innerHTML=nhom.map(({g,ds})=>`
     <table class="grid">
       <thead><tr>
         <th class="gname" colspan="2">${esc(g.ten)}</th>
@@ -790,7 +845,7 @@ function renderBoard(){
         <th class="sum">${totGroup(g)}</th>
         <th class="noprint" style="width:44px"></th>
       </tr></thead>
-      <tbody>${g.items.map(it=>`<tr class="row">
+      <tbody>${ds.map(it=>`<tr class="row">
         <td class="pic"><div class="ph" data-img="${it.id}" role="button" tabindex="0"
           title="Bấm để đổi ảnh">${it.img?`<img src="${it.img}" alt="${esc(it.ten)}">`:'<span>+ ảnh</span>'}</div></td>
         <td class="sku"><code>${esc(it.sku)}</code><small>${esc(it.ten||"—")}</small></td>
@@ -799,7 +854,7 @@ function renderBoard(){
         <td class="noprint"><button class="btn sm warn" data-del="${it.id}" title="Xoá dòng">✕</button></td>
       </tr>`).join("")}</tbody>
     </table>`).join("");
-  renderFoot();renderStats();
+  renderFoot();renderStats();demTab();
 }
 function draftTotal(){
   let n=0;for(const pid in S.draft)for(const s in S.draft[pid])n+=+S.draft[pid][s]||0;
@@ -843,11 +898,45 @@ function setImg(src){
   const it=itemById(imgFor);if(!it)return;
   it.img=src;save();renderBoard();drawPrev(src);
 }
-function saveImgLink(){
+/** Thu nhỏ một ảnh đã tải về thành chuỗi dữ liệu gọn để lưu kèm. */
+function thuNho(blobOrUrl){
+  return new Promise((ok,loi)=>{
+    const im=new Image();
+    im.onload=()=>{
+      const W=180,H=Math.max(1,Math.round(im.height*W/im.width));
+      const cv=document.createElement("canvas");cv.width=W;cv.height=H;
+      cv.getContext("2d").drawImage(im,0,0,W,H);
+      try{ok(cv.toDataURL("image/jpeg",.7))}catch(e){loi(e)}
+    };
+    im.onerror=()=>loi(new Error("không đọc được ảnh"));
+    im.src=blobOrUrl;
+  });
+}
+/** Dán link: tải ảnh về qua Worker rồi lưu hẳn ảnh, vì link CDN của sàn hay hết hạn. */
+async function saveImgLink(){
   const v=document.getElementById("imUrl").value.trim();
   if(!v){toast("Chưa dán link nào");return}
   if(!okImgSrc(v)){toast("Link phải bắt đầu bằng http:// hoặc https://");return}
-  setImg(v);closeImg();toast("Đã lưu link ảnh");
+  if(/^data:image\//i.test(v)){setImg(v);closeImg();toast("Đã lưu ảnh");return}
+  const nut=document.getElementById("imSave");
+  nut.disabled=true;nut.textContent="Đang tải ảnh…";
+  let xong=false;
+  try{
+    const r=await fetch("img?u="+encodeURIComponent(v));
+    if(!r.ok)throw new Error(await r.text());
+    const blob=await r.blob();
+    const url=URL.createObjectURL(blob);
+    try{
+      setImg(await thuNho(url));xong=true;
+    }finally{URL.revokeObjectURL(url)}
+    closeImg();toast("Đã tải ảnh về và lưu lại — về sau không mất nữa");
+  }catch(e){
+    /* không tải hộ được (chạy ngoài Worker, hoặc nguồn chặn) thì giữ nguyên link */
+    setImg(v);closeImg();
+    toast("Không tải được ảnh về, tạm lưu link. Ảnh có thể mất khi nguồn hết hạn.");
+  }finally{
+    nut.disabled=false;nut.textContent="Lưu link";
+  }
 }
 /** Chọn file thì thu nhỏ trước khi lưu, tránh phình bộ nhớ và chậm đồng bộ. */
 function pickImageFile(){
@@ -857,15 +946,8 @@ function pickImageFile(){
     const f=inp.files[0];if(!f)return;
     const fr=new FileReader();
     fr.onload=()=>{
-      const im=new Image();
-      im.onload=()=>{
-        const W=200,H=Math.max(1,Math.round(im.height*W/im.width));
-        const cv=document.createElement("canvas");cv.width=W;cv.height=H;
-        cv.getContext("2d").drawImage(im,0,0,W,H);
-        setImg(cv.toDataURL("image/jpeg",.72));closeImg();toast("Đã cập nhật ảnh");
-      };
-      im.onerror=()=>toast("Không đọc được ảnh này");
-      im.src=fr.result;
+      thuNho(fr.result).then(d=>{setImg(d);closeImg();toast("Đã cập nhật ảnh")},
+                               ()=>toast("Không đọc được ảnh này"));
     };
     fr.readAsDataURL(f);
   };
@@ -1054,6 +1136,7 @@ function renderLog(){
   document.getElementById("logHint").textContent=
     S.moves.length?`${S.moves.length} lượt · xuất hôm nay ${outToday()} đôi · huỷ ${huyToday()} đôi`:"";
   if(!log.length){box.innerHTML='<p class="empty">Chưa có phát sinh nào. Nạp file PDF hoặc bấm đặt hàng để bắt đầu.</p>';return}
+  demTab();
   box.innerHTML=`<div class="gscroll"><table class="list">
     <thead><tr><th>Ngày</th><th>Giờ</th><th>Loại</th><th>Mã vận đơn</th><th>Mã SKU</th>
       <th class="n">Size</th><th class="n">SL</th><th>Ghi chú</th><th class="noprint"></th></tr></thead>
@@ -1096,6 +1179,8 @@ function exportCsv(){
 document.addEventListener("click",async e=>{
   const t=e.target,btn=t.closest("button"),ph=t.closest("[data-img]");
   if(t.id==="imgModal"){closeImg();return}
+  const tb=t.closest("#tabs button");
+  if(tb){doiTab(tb.dataset.t);return}
   if(ph){openImg(ph.dataset.img);return}
   const mb=t.closest("#modes button");
   if(mb){
@@ -1222,6 +1307,7 @@ document.addEventListener("input",e=>{
     if(v)S.draft[pid][s]=v;else delete S.draft[pid][s];
     save({local:true});renderFoot();return;
   }
+  if(t.id==="findQ"){timKiem=t.value.trim();renderBoard();return}
   if(t.id==="szList"){
     const arr=[...new Set(t.value.split(/[^\d]+/).filter(Boolean).map(Number))].sort((a,b)=>a-b);
     if(arr.length){S.settings.sizes=arr;save();renderBoard()}
@@ -1285,6 +1371,7 @@ function renderAll(){
   document.getElementById("verChip").textContent="v"+APP_VER;
   document.getElementById("verChip").title="Đang chạy v"+APP_VER+" — "+APP_TEN;
   renderAll();
+  doiTab(tab);
   checkVersion();
   setSync("busy","Đang lấy cấu hình…");
   napCauHinh().then(()=>{
