@@ -318,7 +318,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="1.7", APP_TEN="chia tab, tìm kiếm, ảnh lưu hẳn không mất";
+const APP_VER="1.8", APP_TEN="báo đơn đã trừ rồi, không trừ hai lần";
 const uid=()=>Math.random().toString(36).slice(2,9);
 const todayKey=()=>new Date().toISOString().slice(0,10);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -985,22 +985,39 @@ async function handleFiles(files){
   pendingMeta={bad,nfile:list.length};
   renderPending();
 }
+/** Đơn này đã trừ kho lần trước chưa? Nhận theo mã vận đơn, không có thì theo mã đơn hàng.
+    Đơn đã huỷ thì không tính, vì hàng đã hoàn về kho nên trừ lại là đúng. */
+function daTru(r){
+  const sku=String(r.sku||"").toLowerCase();
+  return S.moves.find(m=>{
+    if(m.t!=="out"||m.huy)return false;
+    if(String(m.sku||"").toLowerCase()!==sku||+m.size!==+r.size)return false;
+    if(r.track&&m.track&&String(r.track)===String(m.track))return true;
+    if(r.order&&m.order&&String(r.order)===String(m.order))return true;
+    return false;
+  });
+}
 function renderPending(){
   const bad=pendingMeta.bad,nfile=pendingMeta.nfile;
   const out=document.getElementById("pdfOut");
   if(!pending||!pending.length){out.innerHTML="";return}
   let okQty=0,missQty=0;
+  let trungQty=0;
   const rows=pending.map(r=>{
-    const f=findSku(r.sku);
+    const f=findSku(r.sku),cu=daTru(r);
     let st,ton=null;
-    if(!f)st="nosku";
+    if(cu){st="trung";trungQty+=r.qty}
+    else if(!f)st="nosku";
     else{ton=cellOf(f.it,r.size).q||0;st=ton>=r.qty?"ok":"short"}
-    if(st==="ok")okQty+=r.qty;else missQty+=r.qty;
-    return Object.assign({},r,{st,ton,ten:f?f.it.ten:""});
+    if(f&&ton===null)ton=cellOf(f.it,r.size).q||0;
+    if(st==="ok")okQty+=r.qty;
+    else if(st!=="trung")missQty+=r.qty;
+    return Object.assign({},r,{st,ton,ten:f?f.it.ten:"",cu});
   });
   const badge={ok:'<span class="pill ok">Trừ được</span>',
     short:'<span class="pill low">Không đủ tồn</span>',
-    nosku:'<span class="pill bad">Chưa có SKU này</span>'};
+    nosku:'<span class="pill bad">Chưa có SKU này</span>',
+    trung:'<span class="pill mut">Đã trừ rồi</span>'};
   out.innerHTML=`
     <div style="margin-top:16px" class="hr"></div>
     <table class="list"><thead><tr>
@@ -1009,14 +1026,16 @@ function renderPending(){
       <tbody>${rows.map(r=>`<tr>
         <td><code>${esc(r.sku)}</code></td><td>${esc(r.ten||"—")}</td>
         <td class="n">${r.size}</td><td class="n">${r.qty}</td>
-        <td class="n">${r.ton==null?"–":r.ton}</td><td>${badge[r.st]}</td></tr>`).join("")}
+        <td class="n">${r.ton==null?"–":r.ton}</td>
+        <td>${badge[r.st]}${r.cu?` <span class="note">trừ ngày ${esc(r.cu.d)} lúc ${esc(r.cu.h||"")}</span>`:""}</td></tr>`).join("")}
       </tbody>
       <tfoot><tr><td colspan="3">${rows.length} dòng từ ${nfile} file${bad?` (${bad} file không đọc được mã)`:""}</td>
-        <td class="n">${okQty+missQty}</td><td colspan="2">trừ được ${okQty} · vướng ${missQty}</td></tr></tfoot>
+        <td class="n">${okQty+missQty+trungQty}</td><td colspan="2">trừ được ${okQty}${trungQty?` · <b>đã trừ rồi ${trungQty}</b>`:""}${missQty?` · vướng ${missQty}`:""}</td></tr></tfoot>
     </table>
     <div class="bar" style="padding:14px 0 0">
       <button class="btn pri" id="doOut" ${okQty+(allowNeg?missQty:0)?"":"disabled"}>Trừ kho ${okQty+(allowNeg?missQty:0)} đôi</button>
       <button class="btn" id="clrOut">Bỏ qua</button>
+      ${trungQty?`<span class="note" style="color:var(--low)">${trungQty} đơn đã trừ kho lần trước, lần này bỏ qua để khỏi trừ hai lần.</span>`:""}
       <label style="display:flex;gap:7px;align-items:center;font-size:13px;width:auto">
         <input type="checkbox" id="negChk" ${allowNeg?"checked":""} style="width:auto">
         Trừ cả dòng không đủ tồn (cho phép tồn âm để đối chiếu sau)</label>
@@ -1027,7 +1046,9 @@ function applyOut(){
   if(!pending)return;
   let done=0,skip=0;
   const now=new Date().toTimeString().slice(0,5);
+  let bo=0;
   pending.forEach(r=>{
+    if(daTru(r)){bo+=r.qty;return}     /* đã trừ lần trước, không trừ lại */
     const f=findSku(r.sku);
     if(!f){skip+=r.qty;return}
     const c=cellOf(f.it,r.size),have=c.q||0;
@@ -1039,7 +1060,10 @@ function applyOut(){
   });
   save();pending=null;document.getElementById("pdfOut").innerHTML="";
   renderBoard();renderLog();
-  toast(skip?`Đã trừ ${done} đôi · bỏ qua ${skip} đôi chưa xử lý được`:`Đã trừ ${done} đôi khỏi kho`);
+  const phu=[];
+  if(bo)phu.push(`bỏ qua ${bo} đôi đã trừ lần trước`);
+  if(skip)phu.push(`${skip} đôi chưa xử lý được`);
+  toast(phu.length?`Đã trừ ${done} đôi · ${phu.join(" · ")}`:`Đã trừ ${done} đôi khỏi kho`);
 }
 
 
