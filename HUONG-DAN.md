@@ -81,8 +81,21 @@ Bấm **Đưa dữ liệu máy này lên Sheets**. Quay lại file Sheets sẽ t
 | `Anh` | Ảnh sản phẩm |
 | `CaiDat` | Ngưỡng cảnh báo và số phiên bản |
 
-Ở máy thứ hai: mở phần mềm, điền đúng hai ô trên, bấm **Tải từ Sheets về máy**.
 Từ đó mỗi lần mở trang nó tự tải về, và mỗi thay đổi tự lưu lên sau khoảng 2 giây.
+
+### A6. Nối thêm máy khác cho nhanh
+
+Địa chỉ Sheets và mã bảo vệ cũng nằm trong bộ nhớ trình duyệt, nên **mỗi máy mới,
+mỗi trình duyệt mới, mỗi cửa sổ ẩn danh đều bắt đầu từ con số không** — mở lên sẽ
+thấy "Chưa nối Sheets" và bảng mẫu ban đầu. Đó không phải lỗi.
+
+Khỏi phải gõ lại: ở máy đã nối, bấm **Tạo link cài sẵn cho máy khác**. Link được
+copy sẵn, gửi qua Zalo sang điện thoại hoặc máy kia, mở một cái là tự điền hai ô
+và tải dữ liệu về.
+
+Mã bảo vệ nằm sau dấu `#` nên không bị gửi lên máy chủ, và trang tự xoá khỏi thanh
+địa chỉ ngay sau khi mở. Nhưng bản thân cái link thì vẫn chứa mã — **đừng gửi vào
+nhóm chat đông người**, và đừng để nó nằm trong lịch sử duyệt web của máy lạ.
 
 ---
 

@@ -259,6 +259,7 @@ table.list tr.huy code{text-decoration:line-through}
     <div class="bar" style="padding:12px 0 0">
       <button class="btn pri" id="syncPull">Tải từ Sheets về máy</button>
       <button class="btn" id="syncPush">Đưa dữ liệu máy này lên Sheets</button>
+      <button class="btn" id="syncLink">Tạo link cài sẵn cho máy khác</button>
       <span class="note" id="syncMsg"></span>
     </div>
     <div class="bar" style="padding:16px 0 0">
@@ -295,7 +296,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="1.4", APP_TEN="ảnh bằng link, tự tải lại khi đổi tab";
+const APP_VER="1.5", APP_TEN="link cài sẵn cho máy mới";
 const uid=()=>Math.random().toString(36).slice(2,9);
 const todayKey=()=>new Date().toISOString().slice(0,10);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -529,9 +530,18 @@ async function callSync(payload){
   const url=(S.settings.syncUrl||"").trim();
   if(!url)throw new Error("chưa đặt địa chỉ");
   /* text/plain để trình duyệt gửi thẳng, không hỏi trước — Apps Script không trả lời bước hỏi đó */
-  const r=await fetch(url,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},
-    body:JSON.stringify(Object.assign({token:(S.settings.syncToken||"").trim()},payload)),
-    redirect:"follow"});
+  const ac=new AbortController();
+  const hetgio=setTimeout(()=>ac.abort(),25000);
+  let r;
+  try{
+    r=await fetch(url,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},
+      body:JSON.stringify(Object.assign({token:(S.settings.syncToken||"").trim()},payload)),
+      redirect:"follow",signal:ac.signal});
+  }catch(e){
+    throw new Error(e.name==="AbortError"
+      ? "quá 25 giây không có trả lời — kiểm tra mạng và địa chỉ Apps Script"
+      : "không gọi được tới Apps Script — kiểm tra mạng hoặc địa chỉ đã dán");
+  }finally{clearTimeout(hetgio)}
   if(!r.ok)throw new Error("máy chủ trả về "+r.status);
   const t=await r.text();
   let j;try{j=JSON.parse(t)}catch(e){throw new Error("trả về không đúng định dạng — kiểm tra lại quyền truy cập của ứng dụng web")}
@@ -581,14 +591,15 @@ function unpackState(d){
 }
 
 async function syncPull(quiet){
-  if(!syncOn())return;
+  if(!syncOn()||syncBusy)return;
+  syncBusy=true;
   setSync("busy",quiet?"":"Đang tải về…");
   try{
     const j=await callSync({action:"pull"});
     const u=unpackState(j.data||{});
     if(!u.groups.length&&!u.moves.length){
       /* Sheets còn trống: coi như lần đầu, đẩy dữ liệu máy này lên làm gốc */
-      S.ver=j.ver||0;save({local:true});await syncPush(true);
+      S.ver=j.ver||0;save({local:true});syncBusy=false;await syncPush(true);
       setSync("ok","Sheets đang trống — đã đưa dữ liệu máy này lên làm gốc.");
       return;
     }
@@ -600,6 +611,7 @@ async function syncPull(quiet){
     save({local:true});renderAll();hideConflict();
     setSync("ok",`Đã tải về ${u.groups.reduce((a,g)=>a+g.items.length,0)} mã hàng · bản ${S.ver}`);
   }catch(e){setSync("err",String(e.message||e))}
+  finally{syncBusy=false}
 }
 async function syncPush(force){
   if(!syncOn()||syncBusy)return;
@@ -653,6 +665,33 @@ function showConflict(ver){
     <button class="btn sm warn" id="cfPush">Ghi đè Sheets bằng dữ liệu máy này</button>`;
 }
 function hideConflict(){const b=document.getElementById("conflict");b.hidden=true;b.innerHTML=""}
+
+/* ═══════════ chuyển cấu hình sang máy khác ═══════════
+   Địa chỉ Sheets và mã bảo vệ nằm trong localStorage nên trình duyệt mới là trống.
+   Gói vào phần sau dấu # của link để máy mới mở một cái là xong.
+   Dùng # chứ không phải ? để chuỗi này không bị gửi lên máy chủ, không lọt vào log. */
+function taoLinkCaiSan(){
+  if(!syncOn())return "";
+  const cfg={u:S.settings.syncUrl,t:S.settings.syncToken||""};
+  const b64=btoa(unescape(encodeURIComponent(JSON.stringify(cfg))));
+  return location.origin+location.pathname+"#cfg="+b64;
+}
+function docLinkCaiSan(){
+  const m=/[#&]cfg=([^&]+)/.exec(location.hash||"");
+  if(!m)return false;
+  let ok=false;
+  try{
+    const c=JSON.parse(decodeURIComponent(escape(atob(m[1]))));
+    if(c&&c.u){
+      S.settings.syncUrl=String(c.u);
+      S.settings.syncToken=String(c.t||"");
+      save({local:true});ok=true;
+    }
+  }catch(e){}
+  /* xoá khỏi thanh địa chỉ để mã bảo vệ không nằm chình ình trên màn hình */
+  history.replaceState(null,"",location.pathname+location.search);
+  return ok;
+}
 
 /* ═══════════ báo có bản mới ═══════════
    version.json nằm cạnh trang. Cloudflare dựng lại là file đó đổi theo,
@@ -1078,6 +1117,14 @@ document.addEventListener("click",async e=>{
   if(id==="imClose"){closeImg();return}
   if(id==="syncPull"||id==="cfPull"){syncPull(false);return}
   if(id==="syncPush"){syncPush(false);return}
+  if(id==="syncLink"){
+    const l=taoLinkCaiSan();
+    if(!l){toast("Chưa có địa chỉ Sheets để tạo link");return}
+    const xong=()=>setSync(syncState,"Đã copy link. Gửi sang máy kia rồi mở là tự nối, không phải gõ gì.");
+    if(navigator.clipboard)navigator.clipboard.writeText(l).then(xong,()=>prompt("Copy link này:",l));
+    else prompt("Copy link này:",l);
+    return;
+  }
   if(id==="cfPush"){
     if(confirm("Ghi đè toàn bộ dữ liệu trên Sheets bằng dữ liệu máy này? Thay đổi của máy kia sẽ mất."))
       syncPush(true);
@@ -1213,11 +1260,15 @@ function renderAll(){
 }
 (function(){
   try{const th=localStorage.getItem(KEY+".theme");if(th)document.documentElement.setAttribute("data-theme",th)}catch(e){}
+  const tuLink=docLinkCaiSan();
   document.getElementById("verChip").textContent="v"+APP_VER;
   document.getElementById("verChip").title="Đang chạy v"+APP_VER+" — "+APP_TEN;
   renderAll();
   checkVersion();
-  if(syncOn()){setSync("busy","Đang tải từ Sheets…");syncPull(true)}
-  else setSync("off","");
+  if(syncOn()){
+    setSync("busy","Đang tải từ Sheets…");
+    syncPull(true);
+    if(tuLink)toast("Đã nhận cấu hình từ link — đang tải dữ liệu về");
+  }else setSync("off","Chưa nối Sheets. Dán địa chỉ và mã bảo vệ vào hai ô trên, hoặc mở link cài sẵn tạo từ máy đã nối.");
 })();
 </script>
