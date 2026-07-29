@@ -139,7 +139,7 @@ tr.row:hover td:not(.locked){background:var(--sunk)}
 /* ---------- vùng thả PDF ---------- */
 .drop{border:2px dashed var(--line2);border-radius:10px;padding:28px 18px;text-align:center;cursor:pointer;background:var(--sunk);transition:border-color .15s,background .15s}
 .drop:hover,.drop.over{border-color:var(--act);background:var(--act-soft)}
-.drop b{display:block;font-size:14.5px;font-weight:620;margin-bottom:3px}
+.drop > b{display:block;font-size:14.5px;font-weight:620;margin-bottom:3px}
 table.list{border-collapse:separate;border-spacing:0;width:100%;font-size:13.5px}
 table.list th,table.list td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
 table.list thead th{background:var(--sunk);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink2);font-weight:700}
@@ -161,7 +161,11 @@ table.list tfoot td{background:var(--sunk);font-weight:640}
 #imgModal h3{margin:0 0 4px;font-size:15px;font-weight:660}
 #imgModal .prev{width:100%;aspect-ratio:4/3;border-radius:8px;background:var(--sunk);margin:12px 0;overflow:hidden;display:grid;place-items:center}
 #imgModal .prev img{width:100%;height:100%;object-fit:cover}
-#imgModal .prev span{font-size:12.5px;color:var(--ink3)}   /* phải có: display:flex ở trên đè mất thuộc tính hidden */
+#imgModal .prev span{font-size:12.5px;color:var(--ink3)}
+#mapBox .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:12px 0}
+#mapBox select{width:100%}
+#mapBox .xem{font-family:var(--mono);font-size:11.5px;color:var(--ink2);background:var(--sunk);
+  border-radius:7px;padding:9px 11px;overflow-x:auto;white-space:pre;margin-top:4px}   /* phải có: display:flex ở trên đè mất thuộc tính hidden */
 #conflict b{color:var(--low);font-size:13.5px}
 #syncChip.ok{border-color:var(--act);color:var(--act)}
 #syncChip.err{border-color:var(--lock);color:var(--lock)}
@@ -229,13 +233,14 @@ table.list tr.huy code{text-decoration:line-through}
 </section>
 
 <section class="card" data-tab="xuat">
-  <h2>Xuất hàng — nạp file PDF phiếu gửi <span class="hint">đọc Seller SKU trên phiếu, tự trừ kho</span></h2>
+  <h2>Xuất hàng — nạp file đơn <span class="hint">đọc mã SKU từ phiếu gửi PDF hoặc file đơn Excel/CSV, rồi tự trừ kho</span></h2>
   <div class="pad">
     <div class="drop" id="drop" role="button" tabindex="0">
-      <b>Kéo thả file PDF vào đây</b>
-      <span class="note">hoặc bấm để chọn — chính là file phiếu gửi đã in để giao hàng hôm nay</span>
+      <b>Kéo thả file vào đây</b>
+      <span class="note">Phiếu gửi <b>PDF</b> (TikTok, J&amp;T…) hoặc file đơn hàng <b>Excel / CSV</b> xuất từ Sapo, Shopee…</span>
     </div>
-    <input type="file" id="pdfIn" accept="application/pdf" multiple hidden>
+    <input type="file" id="pdfIn" accept=".pdf,.xlsx,.xls,.csv,application/pdf" multiple hidden>
+    <div id="mapBox"></div>
     <div id="pdfOut"></div>
   </div>
 </section>
@@ -318,7 +323,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="1.8", APP_TEN="báo đơn đã trừ rồi, không trừ hai lần";
+const APP_VER="1.9", APP_TEN="nạp thêm được file đơn Excel và CSV";
 const uid=()=>Math.random().toString(36).slice(2,9);
 const todayKey=()=>new Date().toISOString().slice(0,10);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -475,6 +480,136 @@ async function readLabels(u8){
     }
   }
   return rows;
+}
+
+/* ═══════════ đọc file Excel và CSV ═══════════
+   Excel .xlsx thực chất là một file nén zip. Trình duyệt giải nén được bằng
+   DecompressionStream nên không cần thư viện ngoài. */
+
+/** Bung file zip: trả về { tên file: chuỗi nội dung }. */
+async function bungZip(u8){
+  const dv=new DataView(u8.buffer,u8.byteOffset,u8.byteLength);
+  /* tìm mục lục cuối file (End of Central Directory) */
+  let eocd=-1;
+  for(let i=u8.length-22;i>=Math.max(0,u8.length-66000);i--){
+    if(dv.getUint32(i,true)===0x06054b50){eocd=i;break}
+  }
+  if(eocd<0)throw new Error("không phải file zip hợp lệ");
+  const soMuc=dv.getUint16(eocd+10,true);
+  let p=dv.getUint32(eocd+16,true);
+  const out={};
+  for(let i=0;i<soMuc;i++){
+    if(dv.getUint32(p,true)!==0x02014b50)break;
+    const nen=dv.getUint16(p+10,true);
+    const coNen=dv.getUint32(p+20,true);
+    const tenLen=dv.getUint16(p+28,true);
+    const extraLen=dv.getUint16(p+30,true);
+    const cmtLen=dv.getUint16(p+32,true);
+    const viTri=dv.getUint32(p+42,true);
+    const ten=new TextDecoder().decode(u8.subarray(p+46,p+46+tenLen));
+    /* nhảy tới phần dữ liệu thật, sau phần đầu cục bộ */
+    const lTenLen=dv.getUint16(viTri+26,true);
+    const lExtraLen=dv.getUint16(viTri+28,true);
+    const bd=viTri+30+lTenLen+lExtraLen;
+    const raw=u8.subarray(bd,bd+coNen);
+    let data;
+    if(nen===0)data=raw;
+    else{
+      try{
+        const ds=new DecompressionStream("deflate-raw");
+        const buf=await new Response(new Blob([raw]).stream().pipeThrough(ds)).arrayBuffer();
+        data=new Uint8Array(buf);
+      }catch(e){data=null}
+    }
+    if(data)out[ten]=new TextDecoder("utf-8").decode(data);
+    p+=46+tenLen+extraLen+cmtLen;
+  }
+  return out;
+}
+
+const goXml=t=>String(t).replace(/&lt;/g,"<").replace(/&gt;/g,">")
+  .replace(/&quot;/g,'"').replace(/&apos;/g,"'")
+  .replace(/&#(\d+);/g,(m,d)=>String.fromCodePoint(+d))
+  .replace(/&#x([0-9a-f]+);/gi,(m,h)=>String.fromCodePoint(parseInt(h,16)))
+  .replace(/&amp;/g,"&");
+
+/** Cột kiểu chữ (A, B, …, AA) sang số thứ tự bắt đầu từ 0. */
+function cotSo(r){
+  const m=/^([A-Z]+)/.exec(String(r||"").toUpperCase());
+  if(!m)return -1;
+  let n=0;
+  for(const c of m[1])n=n*26+(c.charCodeAt(0)-64);
+  return n-1;
+}
+
+async function docXlsx(u8){
+  const f=await bungZip(u8);
+  /* bảng chuỗi dùng chung */
+  const chung=[];
+  const ss=f["xl/sharedStrings.xml"];
+  if(ss){
+    for(const si of ss.match(/<si\b[\s\S]*?<\/si>/g)||[]){
+      let s="";
+      for(const t of si.match(/<t[^>]*>[\s\S]*?<\/t>/g)||[])
+        s+=goXml(t.replace(/^<t[^>]*>/,"").replace(/<\/t>$/,""));
+      chung.push(s);
+    }
+  }
+  const ten=Object.keys(f).filter(n=>/^xl\/worksheets\/sheet\d+\.xml$/.test(n))
+    .sort((a,b)=>(+/(\d+)/.exec(a)[1])-(+/(\d+)/.exec(b)[1]))[0];
+  if(!ten)throw new Error("file Excel không có trang tính nào");
+  const rows=[];
+  for(const r of f[ten].match(/<row\b[\s\S]*?<\/row>|<row\b[^>]*\/>/g)||[]){
+    const cells=[];
+    for(const c of r.match(/<c\b[\s\S]*?<\/c>|<c\b[^>]*\/>/g)||[]){
+      const vt=cotSo((/\br="([A-Z]+\d+)"/.exec(c)||[])[1]);
+      const kieu=(/\bt="([^"]+)"/.exec(c)||[])[1]||"n";
+      let v="";
+      if(kieu==="inlineStr"){
+        for(const t of c.match(/<t[^>]*>[\s\S]*?<\/t>/g)||[])
+          v+=goXml(t.replace(/^<t[^>]*>/,"").replace(/<\/t>$/,""));
+      }else{
+        const m=/<v[^>]*>([\s\S]*?)<\/v>/.exec(c);
+        if(m){
+          v=goXml(m[1]);
+          if(kieu==="s")v=chung[+v]!==undefined?chung[+v]:"";
+        }
+      }
+      if(vt>=0){while(cells.length<vt)cells.push("");cells[vt]=v}
+      else cells.push(v);
+    }
+    rows.push(cells);
+  }
+  return rows;
+}
+
+/** CSV: tự đoán dấu ngăn cột, hiểu ô có dấu nháy kép. */
+function docCsv(text){
+  text=text.replace(/^﻿/,"");
+  const dong1=(text.split(/\r?\n/)[0]||"");
+  let sep=",",dem=-1;
+  for(const c of [",",";","\t","|"]){
+    const n=dong1.split(c).length;
+    if(n>dem){dem=n;sep=c}
+  }
+  const rows=[];let o=[],cur="",trongNhay=false;
+  for(let i=0;i<text.length;i++){
+    const ch=text[i];
+    if(trongNhay){
+      if(ch==='"'){
+        if(text[i+1]==='"'){cur+='"';i++}
+        else trongNhay=false;
+      }else cur+=ch;
+      continue;
+    }
+    if(ch==='"'){trongNhay=true;continue}
+    if(ch===sep){o.push(cur);cur="";continue}
+    if(ch==="\n"){o.push(cur);rows.push(o);o=[];cur="";continue}
+    if(ch==="\r")continue;
+    cur+=ch;
+  }
+  if(cur!==""||o.length){o.push(cur);rows.push(o)}
+  return rows.filter(r=>r.some(v=>String(v).trim()!==""));
 }
 
 /* ═══════════ dữ liệu ═══════════ */
@@ -956,9 +1091,14 @@ function pickImageFile(){
 
 /* ---------- nạp PDF ---------- */
 let pending=null,pendingMeta={bad:0,nfile:0};
+const laBang=f=>/\.(xlsx|xls|csv)$/i.test(f.name);
+
 async function handleFiles(files){
-  const list=[...files].filter(f=>/pdf$/i.test(f.name)||f.type==="application/pdf");
-  if(!list.length){toast("Chỉ nhận file PDF");return}
+  const all=[...files];
+  const bang=all.filter(laBang);
+  if(bang.length){await napBang(bang[0]);return}
+  const list=all.filter(f=>/pdf$/i.test(f.name)||f.type==="application/pdf");
+  if(!list.length){toast("Chỉ nhận file PDF, Excel hoặc CSV");return}
   const out=document.getElementById("pdfOut");
   out.innerHTML='<p class="empty">Đang đọc file…</p>';
   let rows=[],bad=0;
@@ -1066,6 +1206,127 @@ function applyOut(){
   toast(phu.length?`Đã trừ ${done} đôi · ${phu.join(" · ")}`:`Đã trừ ${done} đôi khỏi kho`);
 }
 
+
+
+/* ═══════════ nạp file đơn hàng Excel / CSV ═══════════
+   Phiếu Shopee in ra không có mã SKU, nên lấy từ file đơn xuất từ Sapo.
+   Mỗi nơi đặt tên cột một kiểu, nên tự đoán rồi cho sửa lại bằng tay. */
+let bangRows=null,bangTen="";
+const DOAN={
+  track:/vận\s*đơn|v[aậ]n\s*chuy[eể]n|tracking|shipping|mã\s*vd/i,
+  order:/mã\s*đơn|đơn\s*hàng|order|mã\s*hoá\s*đơn/i,
+  sku:/\bsku\b|mã\s*sp|mã\s*sản\s*phẩm|mã\s*hàng|mã\s*bi[eế]n\s*th[eể]|barcode/i,
+  size:/\bsize\b|c[oỡ]\s|kích\s*c/i,
+  qty:/số\s*lượng|^\s*sl\s*$|\bqty\b|quantity/i
+};
+function doanCot(tieuDe){
+  const m={sku:-1,size:-1,qty:-1,track:-1,order:-1},da=new Set();
+  for(const k of ["track","order","sku","size","qty"]){
+    for(let i=0;i<tieuDe.length;i++){
+      if(da.has(i))continue;
+      if(DOAN[k].test(String(tieuDe[i]||""))){m[k]=i;da.add(i);break}
+    }
+  }
+  return m;
+}
+async function napBang(f){
+  const out=document.getElementById("mapBox");
+  out.innerHTML='<p class="empty">Đang đọc file…</p>';
+  pending=null;document.getElementById("pdfOut").innerHTML="";
+  try{
+    if(/\.csv$/i.test(f.name))bangRows=docCsv(await f.text());
+    else bangRows=await docXlsx(new Uint8Array(await f.arrayBuffer()));
+  }catch(e){
+    out.innerHTML=`<div class="pad" style="padding:16px 0 0"><p class="note">Không đọc được file: ${esc(e.message||e)}
+      . Thử xuất lại dạng <b>.xlsx</b> hoặc <b>.csv</b>.</p></div>`;
+    return;
+  }
+  bangRows=bangRows.filter(r=>r.some(v=>String(v).trim()!==""));
+  if(bangRows.length<2){out.innerHTML='<p class="empty">File không có dòng dữ liệu nào.</p>';return}
+  bangTen=f.name;
+  const luu=S.settings.mapCot;
+  const tieuDe=bangRows[0].map(v=>String(v||""));
+  const doan=doanCot(tieuDe);
+  /* dùng lại lựa chọn lần trước nếu tiêu đề y hệt */
+  const chuKy=tieuDe.join("|");
+  S.mapHienTai=(luu&&luu.chuKy===chuKy)?Object.assign({},luu):doan;
+  S.mapHienTai.chuKy=chuKy;
+  renderMap();
+}
+function renderMap(){
+  const out=document.getElementById("mapBox");
+  if(!bangRows){out.innerHTML="";return}
+  const tieuDe=bangRows[0].map((v,i)=>String(v||"")||("Cột "+(i+1)));
+  const m=S.mapHienTai;
+  const chon=(k,nhan,ghi)=>`<label><span class="lbl">${nhan}</span>
+    <select data-map="${k}">
+      <option value="-1">${ghi}</option>
+      ${tieuDe.map((t,i)=>`<option value="${i}"${m[k]===i?" selected":""}>${esc(t)}</option>`).join("")}
+    </select></label>`;
+  const thu=doiBang(3);
+  out.innerHTML=`
+    <div style="margin-top:16px" class="hr"></div>
+    <div class="pad" style="padding:14px 0 0">
+      <b style="font-size:13.5px">${esc(bangTen)}</b>
+      <span class="note"> · ${bangRows.length-1} dòng · chọn xem cột nào ứng với cái gì</span>
+      <div class="cols">
+        ${chon("sku","Cột mã SKU","— bắt buộc chọn —")}
+        ${chon("size","Cột size","SKU đã kèm size ở đuôi")}
+        ${chon("qty","Cột số lượng","mặc định 1 đôi")}
+        ${chon("track","Cột mã vận đơn","không có")}
+        ${chon("order","Cột mã đơn hàng","không có")}
+      </div>
+      <span class="lbl">Thử 3 dòng đầu</span>
+      <div class="xem">${thu.length?thu.map(r=>
+        `${r.sku}   size ${r.size}   ${r.qty} đôi   ${r.track||r.order||"(không có mã đơn)"}`).join("\n")
+        :"chưa ra dòng nào — kiểm lại cột mã SKU và cột size"}</div>
+      <div class="bar" style="padding:14px 0 0">
+        <button class="btn pri" id="mapOk" ${thu.length?"":"disabled"}>Dùng file này</button>
+        <button class="btn" id="mapBo">Bỏ qua</button>
+        ${m.track<0?'<span class="note" style="color:var(--low)">Chưa chọn cột mã vận đơn hay mã đơn hàng thì lần sau nạp lại sẽ không biết đơn nào đã trừ.</span>':""}
+      </div>
+    </div>`;
+}
+/** Đổi các dòng trong bảng thành danh sách đơn. gioiHan>0 thì chỉ lấy vài dòng để xem thử. */
+function doiBang(gioiHan){
+  const m=S.mapHienTai||{},out=[];
+  if(!bangRows||m.sku==null||m.sku<0)return out;
+  for(let i=1;i<bangRows.length;i++){
+    const r=bangRows[i];
+    let sku=String(r[m.sku]==null?"":r[m.sku]).trim().toLowerCase();
+    if(!sku)continue;
+    let size;
+    if(m.size>=0)size=parseInt(String(r[m.size]||"").replace(/\D/g,""),10);
+    else{
+      const mm=/^(.*?)[-_ ](\d{2})$/.exec(sku);
+      if(!mm)continue;
+      sku=mm[1];size=+mm[2];
+    }
+    if(!(size>=20&&size<=50))continue;
+    const qty=m.qty>=0?(parseInt(String(r[m.qty]||"").replace(/\D/g,""),10)||1):1;
+    const track=m.track>=0?String(r[m.track]||"").trim():"";
+    const order=m.order>=0?String(r[m.order]||"").trim():"";
+    out.push({sku,size,qty:Math.max(1,qty),track,order,digits:track});
+    if(gioiHan&&out.length>=gioiHan)break;
+  }
+  return out;
+}
+function dungBang(){
+  const ds=doiBang(0);
+  if(!ds.length){toast("Không lấy được dòng nào — kiểm lại cột mã SKU");return}
+  const map={};
+  ds.forEach(r=>{
+    const k=r.sku+"|"+r.size+"|"+(r.track||r.order||"");
+    if(map[k])map[k].qty+=r.qty;else map[k]=Object.assign({},r);
+  });
+  pending=Object.values(map).sort((a,b)=>a.sku.localeCompare(b.sku)||a.size-b.size);
+  pendingMeta={bad:0,nfile:1};
+  S.settings.mapCot=Object.assign({},S.mapHienTai);
+  save({local:true});
+  document.getElementById("mapBox").innerHTML="";
+  bangRows=null;
+  renderPending();
+}
 
 /* ---------- huỷ đơn: tìm theo mã vận đơn rồi hoàn hàng về kho ---------- */
 let huyHits=null;
@@ -1298,6 +1559,8 @@ document.addEventListener("click",async e=>{
   if(id==="clrOrder"){S.draft={};save();renderBoard();return}
   if(id==="doOut"){applyOut();return}
   if(id==="clrOut"){pending=null;document.getElementById("pdfOut").innerHTML="";return}
+  if(id==="mapOk"){dungBang();return}
+  if(id==="mapBo"){bangRows=null;document.getElementById("mapBox").innerHTML="";return}
   if(id==="expCsv"){exportCsv();return}
   if(id==="expJson"){dl(`sao-luu-kho-${todayKey()}.json`,JSON.stringify(S),"application/json");toast("Đã tải file sao lưu");return}
   if(id==="impJson"){document.getElementById("jsonIn").click();return}
@@ -1345,6 +1608,7 @@ document.addEventListener("input",e=>{
 });
 document.addEventListener("change",e=>{
   const t=e.target;
+  if(t.dataset&&t.dataset.map){S.mapHienTai[t.dataset.map]=+t.value;renderMap();return}
   if(t.id==="negChk"){allowNeg=t.checked;renderPending();return}
   if(t.id==="pdfIn"&&t.files.length){handleFiles(t.files);t.value="";return}
   if(t.id==="jsonIn"&&t.files[0]){

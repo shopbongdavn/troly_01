@@ -192,6 +192,20 @@ Việc tải hộ đi qua đường `/img` của Worker, vì trình duyệt khô
 đặt. Tab đang mở được nhớ lại cho lần sau. Tab Kho hàng có ô tìm kiếm theo mã SKU,
 tên màu hoặc nhóm hàng — cần khi danh sách dài ra.
 
+**Nạp file Excel / CSV.** Phiếu Shopee in ra không có mã SKU, nên dùng file đơn
+hàng xuất từ Sapo (hoặc bất kỳ nơi nào) thay cho phiếu PDF. Kéo file `.xlsx` hay
+`.csv` vào đúng ô đó.
+
+Phần mềm tự đoán cột nào là mã SKU, size, số lượng, mã vận đơn, mã đơn hàng — rồi
+cho xem thử 3 dòng đầu để đối chiếu trước khi dùng. Đoán sai thì chọn lại bằng tay,
+lần sau file cùng kiểu tiêu đề sẽ nhớ lựa chọn đó.
+
+Nếu mã SKU trong file đã kèm size ở đuôi (`ij-f50mg-t-40`) thì để ô *Cột size* ở
+mục "SKU đã kèm size". Nếu size nằm ở cột riêng thì chọn cột đó.
+
+**Nên chọn cột mã vận đơn hoặc mã đơn hàng.** Không có thì lần sau nạp lại phần mềm
+không biết đơn nào đã trừ, và sẽ trừ lại lần nữa.
+
 **Nạp trùng file.** Phần mềm nhớ mã vận đơn của từng lượt đã trừ. Nạp lại file cũ,
 hoặc nạp file gộp có lẫn đơn hôm trước, thì các đơn đó hiện *Đã trừ rồi* kèm ngày
 giờ đã trừ và **không bị trừ lần hai**. Cứ nạp cả file, không phải lọc tay.
@@ -205,7 +219,7 @@ dấu hiệu cần kiểm lại kho, không phải lỗi.
 **Vẫn nên tải file sao lưu** định kỳ ở mục Cài đặt. Sheets có lịch sử sửa đổi,
 nhưng file `.json` khôi phục nhanh hơn nhiều.
 
-**Phiên bản.** Số `v1.8` cạnh tên phần mềm là bản đang chạy. Khi Cloudflare dựng
+**Phiên bản.** Số `v1.9` cạnh tên phần mềm là bản đang chạy. Khi Cloudflare dựng
 xong bản mới, trang đang mở sẽ hiện băng xanh *"Đã có bản mới"* kèm nút tải lại —
 kiểm mỗi phút một lần và mỗi khi quay lại tab. Bấm *Để sau* thì băng ẩn đi cho
 đến lần mở trang sau.
