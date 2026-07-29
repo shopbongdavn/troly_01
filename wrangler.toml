@@ -1,7 +1,15 @@
-# Cấu hình cho Cloudflare Workers — chỉ phục vụ trang tĩnh trong thư mục web/
+# Cấu hình cho Cloudflare Workers.
 # Dòng name phải trùng tên Worker trên Cloudflare (Settings -> General -> Name).
 name = "dathang"
+main = "src/worker.js"
 compatibility_date = "2025-09-01"
 
+# Trang tĩnh nằm trong web/. Worker đọc qua binding ASSETS.
 [assets]
 directory = "./web"
+binding = "ASSETS"
+
+# Địa chỉ Apps Script và mã bảo vệ KHÔNG để ở đây.
+# Đặt trong Cloudflare: Settings -> Variables and Secrets
+#   SHEETS_URL   = https://script.google.com/macros/s/…/exec
+#   SHEETS_TOKEN = mã bảo vệ đã đặt trong Code.gs

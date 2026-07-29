@@ -83,19 +83,30 @@ Bấm **Đưa dữ liệu máy này lên Sheets**. Quay lại file Sheets sẽ t
 
 Từ đó mỗi lần mở trang nó tự tải về, và mỗi thay đổi tự lưu lên sau khoảng 2 giây.
 
-### A6. Nối thêm máy khác cho nhanh
+### A6. Khai báo cấu hình trên Cloudflare — làm một lần, mọi máy dùng được
 
-Địa chỉ Sheets và mã bảo vệ cũng nằm trong bộ nhớ trình duyệt, nên **mỗi máy mới,
-mỗi trình duyệt mới, mỗi cửa sổ ẩn danh đều bắt đầu từ con số không** — mở lên sẽ
-thấy "Chưa nối Sheets" và bảng mẫu ban đầu. Đó không phải lỗi.
+Đây là bước quan trọng nhất để **mở địa chỉ ở bất kỳ máy nào cũng có sẵn dữ liệu**,
+không phải nhập gì. Worker sẽ tự phát cấu hình cho trang qua `/config.json`.
 
-Khỏi phải gõ lại: ở máy đã nối, bấm **Tạo link cài sẵn cho máy khác**. Link được
-copy sẵn, gửi qua Zalo sang điện thoại hoặc máy kia, mở một cái là tự điền hai ô
-và tải dữ liệu về.
+Vào Cloudflare → Worker `dathang` → **Settings** → **Variables and Secrets** →
+**Add**, thêm hai mục, **cả hai đều chọn kiểu Secret**:
 
-Mã bảo vệ nằm sau dấu `#` nên không bị gửi lên máy chủ, và trang tự xoá khỏi thanh
-địa chỉ ngay sau khi mở. Nhưng bản thân cái link thì vẫn chứa mã — **đừng gửi vào
-nhóm chat đông người**, và đừng để nó nằm trong lịch sử duyệt web của máy lạ.
+| Tên | Giá trị |
+|---|---|
+| `SHEETS_URL` | địa chỉ `/exec` lấy ở bước A4 |
+| `SHEETS_TOKEN` | mã bảo vệ đã đặt ở bước A3 |
+
+> **Phải chọn Secret, đừng chọn Text.** Biến kiểu Text chỉ khai trong bảng điều
+> khiển sẽ bị xoá mất ở lần `wrangler deploy` sau, vì nó không có trong
+> `wrangler.toml`. Secret thì được giữ nguyên.
+
+Lưu xong Cloudflare tự dựng lại. Mở địa chỉ `.workers.dev` ở bất kỳ máy nào —
+điện thoại, máy khác, cửa sổ ẩn danh — là thấy ngay dữ liệu chung, chip góc phải
+hiện *Đã đồng bộ*.
+
+Khi nào chưa khai hai biến này, trang sẽ báo *"Máy chủ chưa có biến SHEETS_URL và
+SHEETS_TOKEN"*. Lúc đó vẫn dán tay vào hai ô trong mục Cài đặt được, hoặc dùng nút
+**Tạo link cài sẵn cho máy khác** để gửi cấu hình sang máy kia.
 
 ---
 

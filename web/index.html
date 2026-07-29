@@ -249,7 +249,7 @@ table.list tr.huy code{text-decoration:line-through}
     </div>
     <div class="hr" style="margin:16px 0"></div>
     <h3 style="margin:0 0 4px;font-size:13.5px;font-weight:660">Đồng bộ Google Sheets</h3>
-    <p class="note" style="margin:0 0 12px">Dán địa chỉ ứng dụng web của Apps Script để nhiều máy dùng chung một kho dữ liệu. Bỏ trống thì phần mềm chỉ lưu trong máy này.</p>
+    <p class="note" style="margin:0 0 12px" id="cfgNote">Dán địa chỉ ứng dụng web của Apps Script để nhiều máy dùng chung một kho dữ liệu. Bỏ trống thì phần mềm chỉ lưu trong máy này.</p>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px">
       <label><span class="lbl">Địa chỉ ứng dụng web</span>
         <input type="text" id="syncUrl" placeholder="https://script.google.com/macros/s/…/exec"></label>
@@ -296,7 +296,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="1.5", APP_TEN="link cài sẵn cho máy mới";
+const APP_VER="1.6", APP_TEN="mở địa chỉ là nối sẵn, không phải cài từng máy";
 const uid=()=>Math.random().toString(36).slice(2,9);
 const todayKey=()=>new Date().toISOString().slice(0,10);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -676,6 +676,24 @@ function taoLinkCaiSan(){
   const b64=btoa(unescape(encodeURIComponent(JSON.stringify(cfg))));
   return location.origin+location.pathname+"#cfg="+b64;
 }
+/** Cấu hình do máy chủ cấp: mọi máy mở địa chỉ này đều nối sẵn, khỏi nhập tay. */
+let cfgTuMayChu=false;
+async function napCauHinh(){
+  try{
+    const r=await fetch("config.json?t="+Date.now(),{cache:"no-store"});
+    if(!r.ok)return false;
+    const c=await r.json();
+    if(!c||!c.u)return false;
+    if(S.settings.syncUrl!==c.u||S.settings.syncToken!==(c.t||"")){
+      S.settings.syncUrl=String(c.u);
+      S.settings.syncToken=String(c.t||"");
+      save({local:true});
+    }
+    cfgTuMayChu=true;
+    return true;
+  }catch(e){return false}   /* mở bằng file:// hoặc chưa đặt biến thì bỏ qua */
+}
+
 function docLinkCaiSan(){
   const m=/[#&]cfg=([^&]+)/.exec(location.hash||"");
   if(!m)return false;
@@ -1256,6 +1274,9 @@ function renderAll(){
   document.getElementById("pfx").value=S.settings.prefix;
   document.getElementById("syncUrl").value=S.settings.syncUrl||"";
   document.getElementById("syncToken").value=S.settings.syncToken||"";
+  const cn=document.getElementById("cfgNote");
+  if(cn&&cfgTuMayChu)cn.innerHTML="Cấu hình do máy chủ cấp, nên <b>mọi máy mở địa chỉ này đều nối sẵn</b>, "
+    +"không phải nhập gì. Muốn đổi thì sửa biến SHEETS_URL và SHEETS_TOKEN trong Cloudflare.";
   renderBoard();renderLog();
 }
 (function(){
@@ -1265,10 +1286,15 @@ function renderAll(){
   document.getElementById("verChip").title="Đang chạy v"+APP_VER+" — "+APP_TEN;
   renderAll();
   checkVersion();
-  if(syncOn()){
-    setSync("busy","Đang tải từ Sheets…");
-    syncPull(true);
-    if(tuLink)toast("Đã nhận cấu hình từ link — đang tải dữ liệu về");
-  }else setSync("off","Chưa nối Sheets. Dán địa chỉ và mã bảo vệ vào hai ô trên, hoặc mở link cài sẵn tạo từ máy đã nối.");
+  setSync("busy","Đang lấy cấu hình…");
+  napCauHinh().then(()=>{
+    renderAll();
+    if(syncOn()){
+      setSync("busy","Đang tải từ Sheets…");
+      syncPull(true);
+      if(tuLink)toast("Đã nhận cấu hình từ link — đang tải dữ liệu về");
+    }else setSync("off","Chưa nối Sheets. Máy chủ chưa có biến SHEETS_URL và SHEETS_TOKEN — "
+      +"đặt trong Cloudflare (Settings → Variables and Secrets), hoặc dán tay vào hai ô trên.");
+  });
 })();
 </script>
