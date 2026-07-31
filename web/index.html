@@ -323,7 +323,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="2.0", APP_TEN="khớp đúng file đơn Sapo";
+const APP_VER="2.1", APP_TEN="sửa lỗi thêm nhóm hàng, tách riêng mã chưa có";
 const uid=()=>Math.random().toString(36).slice(2,9);
 const todayKey=()=>new Date().toISOString().slice(0,10);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -965,7 +965,10 @@ function khop(g,it){
 }
 function renderBoard(){
   const box=document.getElementById("board");
-  const nhom=S.groups.map(g=>({g,ds:g.items.filter(it=>khop(g,it))})).filter(x=>x.ds.length);
+  /* đang tìm kiếm thì mới giấu nhóm không khớp; bình thường phải hiện cả nhóm rỗng,
+     không thì tạo nhóm mới xong nhìn như không có gì xảy ra */
+  let nhom=S.groups.map(g=>({g,ds:g.items.filter(it=>khop(g,it))}));
+  if(timKiem)nhom=nhom.filter(x=>x.ds.length);
   const info=document.getElementById("findInfo");
   if(info)info.textContent=timKiem
     ? `Thấy ${nhom.reduce((a,x)=>a+x.ds.length,0)} mã trong ${nhom.length} nhóm`
@@ -977,12 +980,18 @@ function renderBoard(){
   box.innerHTML=nhom.map(({g,ds})=>`
     <table class="grid">
       <thead><tr>
-        <th class="gname" colspan="2">${esc(g.ten)}</th>
+        <th class="gname" colspan="2">${esc(g.ten)}
+          <button class="btn sm noprint" data-addsku="${g.id}" style="margin-left:10px">+ mã</button>
+          <button class="btn sm noprint" data-rename="${g.id}" title="Đổi tên nhóm">✎</button>
+          ${g.items.length?"":`<button class="btn sm warn noprint" data-delgroup="${g.id}" title="Xoá nhóm rỗng">✕</button>`}
+        </th>
         ${SZ().map(s=>`<th class="sz">${s}</th>`).join("")}
         <th class="sum">${totGroup(g)}</th>
         <th class="noprint" style="width:44px"></th>
       </tr></thead>
-      <tbody>${ds.map(it=>`<tr class="row">
+      <tbody>${ds.length?"":`<tr><td colspan="${SZ().length+4}" class="empty" style="padding:18px">
+        Nhóm này chưa có mã nào — bấm <b>+ mã</b> ở trên để thêm.</td></tr>`}
+      ${ds.map(it=>`<tr class="row">
         <td class="pic"><div class="ph" data-img="${it.id}" role="button" tabindex="0"
           title="Bấm để đổi ảnh">${it.img?`<img src="${it.img}" alt="${esc(it.ten)}">`:'<span>+ ảnh</span>'}</div></td>
         <td class="sku"><code>${esc(it.sku)}</code><small>${esc(it.ten||"—")}</small></td>
@@ -1006,8 +1015,7 @@ function renderFoot(){
       <button class="btn" id="clrOrder" ${n?"":"disabled"}>Xoá số đã nhập</button>
       <span class="note">Xác nhận xong, số đặt sẽ cộng thẳng vào tồn kho và ghi vào nhật ký.</span>`;
   }else{
-    f.innerHTML=`<button class="btn sm" id="addItem">+ Thêm SKU</button>
-      <button class="btn sm" id="addGroup">+ Thêm nhóm hàng</button>
+    f.innerHTML=`<button class="btn sm" id="addGroup">+ Thêm nhóm hàng</button>
       <span class="note">Đang có ${items().length} SKU · ${lockCount()} ô bị khoá N.</span>`;
   }
 }
@@ -1144,16 +1152,17 @@ function renderPending(){
   const out=document.getElementById("pdfOut");
   if(!pending||!pending.length){out.innerHTML="";return}
   let okQty=0,missQty=0;
-  let trungQty=0;
+  let trungQty=0,laQty=0;
   const rows=pending.map(r=>{
     const f=findSku(r.sku),cu=daTru(r);
     let st,ton=null;
-    if(cu){st="trung";trungQty+=r.qty}
-    else if(!f)st="nosku";
-    else{ton=cellOf(f.it,r.size).q||0;st=ton>=r.qty?"ok":"short"}
-    if(f&&ton===null)ton=cellOf(f.it,r.size).q||0;
-    if(st==="ok")okQty+=r.qty;
-    else if(st!=="trung")missQty+=r.qty;
+    if(!f){st="nosku";laQty+=r.qty}
+    else{
+      ton=cellOf(f.it,r.size).q||0;
+      if(cu){st="trung";trungQty+=r.qty}
+      else if(ton>=r.qty){st="ok";okQty+=r.qty}
+      else{st="short";missQty+=r.qty}
+    }
     return Object.assign({},r,{st,ton,ten:f?f.it.ten:"",cu});
   });
   const thieu=[...new Set(rows.filter(r=>r.st==="nosku").map(r=>r.sku))];
@@ -1173,10 +1182,11 @@ function renderPending(){
         <td>${badge[r.st]}${r.cu?` <span class="note">trừ ngày ${esc(r.cu.d)} lúc ${esc(r.cu.h||"")}</span>`:""}</td></tr>`).join("")}
       </tbody>
       <tfoot><tr><td colspan="3">${rows.length} dòng từ ${nfile} file${bad?` (${bad} file không đọc được mã)`:""}</td>
-        <td class="n">${okQty+missQty+trungQty}</td><td colspan="2">trừ được ${okQty}${trungQty?` · <b>đã trừ rồi ${trungQty}</b>`:""}${missQty?` · vướng ${missQty}`:""}</td></tr></tfoot>
+        <td class="n">${okQty+missQty+trungQty+laQty}</td><td colspan="2">trừ được ${okQty}${missQty?` · thiếu tồn ${missQty}`:""}${trungQty?` · <b>đã trừ rồi ${trungQty}</b>`:""}${laQty?` · <b>chưa có mã ${laQty}</b>`:""}</td></tr></tfoot>
     </table>
     <div class="bar" style="padding:14px 0 0">
       <button class="btn pri" id="doOut" ${okQty+(allowNeg?missQty:0)?"":"disabled"}>Trừ kho ${okQty+(allowNeg?missQty:0)} đôi</button>
+      ${laQty?`<span class="note" style="color:var(--lock)">Bỏ qua ${laQty} đôi vì mã chưa có trong kho — thêm mã rồi nạp lại.</span>`:""}
       <button class="btn" id="clrOut">Bỏ qua</button>
       ${thieu.length?`<button class="btn" id="themThieu">+ Thêm ${thieu.length} mã chưa có vào kho</button>`:""}
       ${trungQty?`<span class="note" style="color:var(--low)">${trungQty} đơn đã trừ kho lần trước, lần này bỏ qua để khỏi trừ hai lần.</span>`:""}
@@ -1224,7 +1234,7 @@ function applyOut(){
   renderBoard();renderLog();
   const phu=[];
   if(bo)phu.push(`bỏ qua ${bo} đôi đã trừ lần trước`);
-  if(skip)phu.push(`${skip} đôi chưa xử lý được`);
+  if(skip)phu.push(`bỏ qua ${skip} đôi vì mã chưa có trong kho`);
   toast(phu.length?`Đã trừ ${done} đôi · ${phu.join(" · ")}`:`Đã trừ ${done} đôi khỏi kho`);
 }
 
@@ -1588,14 +1598,27 @@ document.addEventListener("click",async e=>{
   if(id==="huyFind"){huyFind();return}
   if(id==="huyGo"){huyApply();return}
   if(id==="huyClr"){huyHits=null;document.getElementById("huyOut").innerHTML="";return}
-  if(id==="addItem"){
-    const sku=prompt("Mã SKU (đúng như trên phiếu gửi, bỏ phần size):","ij-");
+  if(d.addsku){
+    const g=S.groups.find(v=>v.id===d.addsku);if(!g)return;
+    const sku=prompt(`Thêm mã vào nhóm "${g.ten}".\n\nMã SKU (đúng như trên phiếu, bỏ phần size):`,"");
     if(!sku)return;
     if(findSku(sku.trim())){toast("Mã SKU này đã có trong bảng");return}
     const ten=prompt("Tên màu / tên gọi:","")||"";
-    const sizes={};SZ().forEach(s=>sizes[s]={q:0,lock:false});
-    S.groups[S.groups.length-1].items.push({id:uid(),sku:sku.trim().toLowerCase(),ten:ten.trim(),img:"",sizes});
-    save();renderBoard();toast("Đã thêm SKU");return;
+    const sizes={};SZ().forEach(z=>sizes[z]={q:0,lock:false});
+    g.items.push({id:uid(),sku:sku.trim().toLowerCase(),ten:ten.trim(),img:"",sizes});
+    save();renderBoard();toast("Đã thêm mã vào nhóm "+g.ten);return;
+  }
+  if(d.rename){
+    const g=S.groups.find(v=>v.id===d.rename);if(!g)return;
+    const ten=prompt("Tên nhóm:",g.ten);
+    if(ten===null||!ten.trim())return;
+    g.ten=ten.trim();save();renderBoard();toast("Đã đổi tên nhóm");return;
+  }
+  if(d.delgroup){
+    const g=S.groups.find(v=>v.id===d.delgroup);if(!g)return;
+    if(g.items.length){toast("Nhóm còn mã hàng, xoá hết mã trước đã");return}
+    if(S.groups.length<2){toast("Phải còn ít nhất một nhóm");return}
+    S.groups=S.groups.filter(v=>v.id!==g.id);save();renderBoard();toast("Đã xoá nhóm rỗng");return;
   }
   if(id==="addGroup"){
     const ten=prompt("Tên nhóm hàng:","");

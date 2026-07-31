@@ -214,9 +214,17 @@ chuyển` (tên hãng ship) cũng không bị nhầm là mã vận đơn.
 **Lọc theo trạng thái.** Nếu có chọn *Cột trạng thái*, những dòng ghi huỷ / hoàn /
 trả hàng sẽ bị bỏ qua, không trừ kho. Khung chọn cột báo rõ bỏ bao nhiêu dòng.
 
-**Mã chưa có trong kho.** Bảng đối chiếu ghi *Chưa có SKU này* cho mã lạ. Bấm nút
-**+ Thêm N mã chưa có vào kho** là tạo hết một lượt, hỏi tên nhóm rồi thêm với tồn 0.
-Sau đó vào *Sửa tồn thực tế* nhập số là xong — không phải gõ tay từng dòng.
+**Mã chưa có trong kho.** Bảng đối chiếu ghi *Chưa có SKU này* cho mã lạ. Những dòng
+này **không tính vào nút trừ kho** — trừ một mã không tồn tại thì cũng chẳng trừ được
+gì, nên phần mềm tách riêng và nói rõ bỏ bao nhiêu đôi.
+
+Bấm nút **+ Thêm N mã chưa có vào kho** là tạo hết một lượt, hỏi tên nhóm rồi thêm với
+tồn 0. Sau đó vào *Sửa tồn thực tế* nhập số rồi nạp lại file — không phải gõ tay từng
+dòng.
+
+**Nhóm hàng.** Mỗi nhóm có ba nút ngay cạnh tên: **+ mã** thêm mã vào đúng nhóm đó,
+**✎** đổi tên nhóm, **✕** xoá nhóm (chỉ xoá được khi nhóm không còn mã nào). Nhóm mới
+tạo vẫn hiện dù chưa có mã.
 
 **Nạp trùng file.** Phần mềm nhớ mã vận đơn của từng lượt đã trừ. Nạp lại file cũ,
 hoặc nạp file gộp có lẫn đơn hôm trước, thì các đơn đó hiện *Đã trừ rồi* kèm ngày
@@ -231,7 +239,7 @@ dấu hiệu cần kiểm lại kho, không phải lỗi.
 **Vẫn nên tải file sao lưu** định kỳ ở mục Cài đặt. Sheets có lịch sử sửa đổi,
 nhưng file `.json` khôi phục nhanh hơn nhiều.
 
-**Phiên bản.** Số `v2.0` cạnh tên phần mềm là bản đang chạy. Khi Cloudflare dựng
+**Phiên bản.** Số `v2.1` cạnh tên phần mềm là bản đang chạy. Khi Cloudflare dựng
 xong bản mới, trang đang mở sẽ hiện băng xanh *"Đã có bản mới"* kèm nút tải lại —
 kiểm mỗi phút một lần và mỗi khi quay lại tab. Bấm *Để sau* thì băng ẩn đi cho
 đến lần mở trang sau.
