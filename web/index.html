@@ -323,7 +323,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="2.1", APP_TEN="sửa lỗi thêm nhóm hàng, tách riêng mã chưa có";
+const APP_VER="2.2", APP_TEN="phiếu đặt hàng xuất ra ảnh để gửi đi";
 const uid=()=>Math.random().toString(36).slice(2,9);
 const todayKey=()=>new Date().toISOString().slice(0,10);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -968,7 +968,9 @@ function renderBoard(){
   /* đang tìm kiếm thì mới giấu nhóm không khớp; bình thường phải hiện cả nhóm rỗng,
      không thì tạo nhóm mới xong nhìn như không có gì xảy ra */
   let nhom=S.groups.map(g=>({g,ds:g.items.filter(it=>khop(g,it))}));
-  if(timKiem)nhom=nhom.filter(x=>x.ds.length);
+  if(mode==="order"&&chiHienDat){
+    nhom=nhom.map(x=>({g:x.g,ds:x.ds.filter(it=>datItem(it)>0)})).filter(x=>x.ds.length);
+  }else if(timKiem)nhom=nhom.filter(x=>x.ds.length);
   const info=document.getElementById("findInfo");
   if(info)info.textContent=timKiem
     ? `Thấy ${nhom.reduce((a,x)=>a+x.ds.length,0)} mã trong ${nhom.length} nhóm`
@@ -980,13 +982,13 @@ function renderBoard(){
   box.innerHTML=nhom.map(({g,ds})=>`
     <table class="grid">
       <thead><tr>
-        <th class="gname" colspan="2">${esc(g.ten)}
+        <th class="gname" colspan="2">${esc(g.ten)}${mode==="order"?`<span data-datg="${g.id}" style="color:var(--act)">${datGroup(g)?" · đặt "+datGroup(g):""}</span>`:""}
           <button class="btn sm noprint" data-addsku="${g.id}" style="margin-left:10px">+ mã</button>
           <button class="btn sm noprint" data-rename="${g.id}" title="Đổi tên nhóm">✎</button>
           ${g.items.length?"":`<button class="btn sm warn noprint" data-delgroup="${g.id}" title="Xoá nhóm rỗng">✕</button>`}
         </th>
         ${SZ().map(s=>`<th class="sz">${s}</th>`).join("")}
-        <th class="sum">${totGroup(g)}</th>
+        <th class="sum">${mode==="order"?"Tổng":totGroup(g)}</th>
         <th class="noprint" style="width:44px"></th>
       </tr></thead>
       <tbody>${ds.length?"":`<tr><td colspan="${SZ().length+4}" class="empty" style="padding:18px">
@@ -996,7 +998,7 @@ function renderBoard(){
           title="Bấm để đổi ảnh">${it.img?`<img src="${it.img}" alt="${esc(it.ten)}">`:'<span>+ ảnh</span>'}</div></td>
         <td class="sku"><code>${esc(it.sku)}</code><small>${esc(it.ten||"—")}</small></td>
         ${SZ().map(s=>cellHtml(it,s)).join("")}
-        <td class="tot">${totItem(it)}</td>
+        <td class="tot"${mode==="order"?' style="color:var(--act)"':""}>${mode==="order"?(datItem(it)||""):totItem(it)}</td>
         <td class="noprint"><button class="btn sm warn" data-del="${it.id}" title="Xoá dòng">✕</button></td>
       </tr>`).join("")}</tbody>
     </table>`).join("");
@@ -1006,11 +1008,21 @@ function draftTotal(){
   let n=0;for(const pid in S.draft)for(const s in S.draft[pid])n+=+S.draft[pid][s]||0;
   return n;
 }
+/** Số đang đặt của một mã (cộng ngang) và của cả nhóm. */
+function datItem(it){
+  const d=S.draft[it.id]||{};
+  return SZ().reduce((a,z)=>a+(+d[z]||0),0);
+}
+const datGroup=g=>g.items.reduce((a,it)=>a+datItem(it),0);
+let chiHienDat=false;
 function renderFoot(){
   const f=document.getElementById("gfoot");
   if(mode==="order"){
     const n=draftTotal();
     f.innerHTML=`<b class="num" style="font-size:15px">Tổng đặt: ${n} đôi</b>
+      <button class="btn" id="locDat" ${n?"":"disabled"} aria-pressed="${chiHienDat}">
+        ${chiHienDat?"↩ Hiện lại tất cả":"Chỉ hiện mã đang đặt"}</button>
+      <button class="btn" id="anhDat" ${n?"":"disabled"}>📷 Chụp phiếu đặt hàng</button>
       <button class="btn pri" id="doOrder" ${n?"":"disabled"}>Xác nhận đặt hàng — cộng vào tồn</button>
       <button class="btn" id="clrOrder" ${n?"":"disabled"}>Xoá số đã nhập</button>
       <span class="note">Xác nhận xong, số đặt sẽ cộng thẳng vào tồn kho và ghi vào nhật ký.</span>`;
@@ -1018,6 +1030,114 @@ function renderFoot(){
     f.innerHTML=`<button class="btn sm" id="addGroup">+ Thêm nhóm hàng</button>
       <span class="note">Đang có ${items().length} SKU · ${lockCount()} ô bị khoá N.</span>`;
   }
+}
+
+
+/* ═══════════ vẽ phiếu đặt hàng ra ảnh để gửi cho nhà cung cấp ═══════════
+   Vẽ thẳng lên canvas thay vì chụp màn hình: chủ động được bố cục, chỉ lấy
+   những size thật sự có đặt nên ảnh gọn, chữ nét trên điện thoại. */
+function veAnhDat(){
+  const nhom=S.groups.map(g=>({g,ds:g.items.filter(it=>datItem(it)>0)})).filter(x=>x.ds.length);
+  if(!nhom.length)return null;
+  /* chỉ giữ cột size nào có đặt */
+  const cot=SZ().filter(z=>nhom.some(x=>x.ds.some(it=>+(S.draft[it.id]||{})[z]>0)));
+  if(!cot.length)return null;
+
+  const R=Math.min(3,Math.max(2,Math.round(devicePixelRatio||1)+1));
+  const P=28, hHang=40, hTieu=44, wSku=300, wCot=Math.max(56,Math.min(74,Math.round(620/cot.length))), wTong=76;
+  const rong=P*2+wSku+cot.length*wCot+wTong;
+  const soHang=nhom.reduce((a,x)=>a+x.ds.length+1,0);
+  const cao=P+72+hTieu+soHang*hHang+hHang+P+26;
+
+  const cv=document.createElement("canvas");
+  cv.width=rong*R;cv.height=cao*R;
+  const c=cv.getContext("2d");
+  c.scale(R,R);
+  const F=n=>`${n}px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif`;
+  const M=n=>`${n}px ui-monospace,"SF Mono",Menlo,Consolas,monospace`;
+
+  c.fillStyle="#ffffff";c.fillRect(0,0,rong,cao);
+  /* đầu phiếu */
+  c.fillStyle="#15181d";c.font="700 "+F(24);
+  c.fillText("PHIẾU ĐẶT HÀNG",P,P+26);
+  c.fillStyle="#565d68";c.font=F(13.5);
+  const d=new Date();
+  c.fillText(`${d.toLocaleDateString("vi-VN")} · ${d.toTimeString().slice(0,5)} · tổng ${draftTotal()} đôi`,P,P+50);
+
+  let y=P+72;
+  /* hàng tiêu đề */
+  c.fillStyle="#e9ebee";c.fillRect(P,y,rong-P*2,hTieu);
+  c.fillStyle="#565d68";c.font="700 "+F(12);
+  c.fillText("MÃ SKU",P+12,y+27);
+  c.textAlign="center";c.font="700 "+M(14);c.fillStyle="#15181d";
+  cot.forEach((z,i)=>c.fillText(String(z),P+wSku+i*wCot+wCot/2,y+28));
+  c.fillStyle="#565d68";c.font="700 "+F(12);
+  c.fillText("TỔNG",P+wSku+cot.length*wCot+wTong/2,y+27);
+  c.textAlign="left";
+  y+=hTieu;
+
+  const ke=(y0)=>{c.strokeStyle="#dde0e5";c.lineWidth=1;c.beginPath();
+    c.moveTo(P,y0+.5);c.lineTo(rong-P,y0+.5);c.stroke()};
+
+  nhom.forEach(({g,ds})=>{
+    /* dòng tên nhóm */
+    c.fillStyle="#f2f3f5";c.fillRect(P,y,rong-P*2,hHang);
+    c.fillStyle="#15181d";c.font="700 "+F(14);
+    c.fillText(g.ten,P+12,y+26);
+    c.textAlign="right";c.fillStyle="#0f6e60";c.font="700 "+M(14);
+    c.fillText(String(datGroup(g)),rong-P-12,y+26);
+    c.textAlign="left";
+    ke(y);y+=hHang;
+
+    ds.forEach(it=>{
+      const dr=S.draft[it.id]||{};
+      c.fillStyle="#15181d";c.font="600 "+M(13);
+      c.fillText(it.sku,P+12,y+18);
+      if(it.ten){c.fillStyle="#8b929c";c.font=F(11.5);c.fillText(it.ten,P+12,y+32)}
+      c.textAlign="center";
+      cot.forEach((z,i)=>{
+        const v=+dr[z]||0;
+        const x=P+wSku+i*wCot;
+        if(v){c.fillStyle="#dceeea";c.fillRect(x+3,y+5,wCot-6,hHang-10);
+              c.fillStyle="#0f6e60";c.font="700 "+M(15);c.fillText(String(v),x+wCot/2,y+26)}
+      });
+      c.fillStyle="#15181d";c.font="700 "+M(15);
+      c.fillText(String(datItem(it)),P+wSku+cot.length*wCot+wTong/2,y+26);
+      c.textAlign="left";
+      ke(y);y+=hHang;
+    });
+  });
+
+  /* dòng tổng cuối */
+  c.fillStyle="#15181d";c.fillRect(P,y,rong-P*2,hHang);
+  c.fillStyle="#ffffff";c.font="700 "+F(14);
+  c.fillText("TỔNG CỘNG",P+12,y+26);
+  c.textAlign="center";c.font="700 "+M(16);
+  c.fillText(String(draftTotal()),P+wSku+cot.length*wCot+wTong/2,y+26);
+  c.textAlign="left";
+  y+=hHang;
+  c.fillStyle="#8b929c";c.font=F(11.5);
+  c.fillText("Số trong ô là số đôi cần đặt theo từng size.",P,y+18);
+  return cv;
+}
+async function chupAnhDat(){
+  const cv=veAnhDat();
+  if(!cv){toast("Chưa nhập số đặt nào");return}
+  const blob=await new Promise(ok=>cv.toBlob(ok,"image/png"));
+  if(!blob){toast("Không tạo được ảnh");return}
+  const ten=`dat-hang-${todayKey()}.png`;
+  let daChep=false;
+  try{
+    if(navigator.clipboard&&window.ClipboardItem){
+      await navigator.clipboard.write([new ClipboardItem({"image/png":blob})]);
+      daChep=true;
+    }
+  }catch(e){}
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);a.download=ten;a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+  toast(daChep?"Đã tải ảnh và copy vào bộ nhớ tạm — dán thẳng vào Zalo được"
+              :"Đã tải ảnh phiếu đặt hàng về máy");
 }
 
 /* ---------- ảnh sản phẩm: dán link hoặc chọn file ---------- */
@@ -1543,6 +1663,7 @@ document.addEventListener("click",async e=>{
   const mb=t.closest("#modes button");
   if(mb){
     mode=mb.dataset.m;
+    if(mode!=="order")chiHienDat=false;
     document.querySelectorAll("#modes button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.m===mode));
     renderBoard();return;
   }
@@ -1640,9 +1761,11 @@ document.addEventListener("click",async e=>{
         S.moves.push({id:uid(),d:todayKey(),h:now,t:"in",sku:x.it.sku,size:+s,q,note:"Đặt hàng"});
       }
     }
-    S.draft={};save();renderBoard();renderLog();toast(`Đã đặt ${n} đôi và cộng vào tồn`);return;
+    S.draft={};chiHienDat=false;save();renderBoard();renderLog();toast(`Đã đặt ${n} đôi và cộng vào tồn`);return;
   }
-  if(id==="clrOrder"){S.draft={};save();renderBoard();return}
+  if(id==="clrOrder"){S.draft={};chiHienDat=false;save();renderBoard();return}
+  if(id==="locDat"){chiHienDat=!chiHienDat;renderBoard();return}
+  if(id==="anhDat"){chupAnhDat();return}
   if(id==="doOut"){applyOut();return}
   if(id==="clrOut"){pending=null;document.getElementById("pdfOut").innerHTML="";return}
   if(id==="themThieu"){themMaThieu();return}
@@ -1679,7 +1802,17 @@ document.addEventListener("input",e=>{
     S.draft[pid]=S.draft[pid]||{};
     const v=Math.max(0,+t.value||0);
     if(v)S.draft[pid][s]=v;else delete S.draft[pid][s];
-    save({local:true});renderFoot();return;
+    save({local:true});
+    /* cập nhật thẳng ô tổng của dòng và của nhóm, không vẽ lại cả bảng để khỏi mất chỗ đang gõ */
+    const x=items().find(v2=>v2.it.id===pid);
+    if(x){
+      const row=t.closest("tr");
+      if(row){const o=row.querySelector("td.tot");if(o)o.textContent=datItem(x.it)||""}
+      const tb=t.closest("table");
+      const gs=tb&&tb.querySelector(`[data-datg="${x.g.id}"]`);
+      if(gs)gs.textContent=datGroup(x.g)?" · đặt "+datGroup(x.g):"";
+    }
+    renderFoot();return;
   }
   if(t.id==="findQ"){timKiem=t.value.trim();renderBoard();return}
   if(t.id==="szList"){
