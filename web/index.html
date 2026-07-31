@@ -324,7 +324,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="2.3", APP_TEN="font Arial, ảnh vuông, phiếu đặt có ảnh sản phẩm";
+const APP_VER="2.4", APP_TEN="giữ được nhóm hàng chưa có mã nào";
 const uid=()=>Math.random().toString(36).slice(2,9);
 const todayKey=()=>new Date().toISOString().slice(0,10);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -713,11 +713,15 @@ async function callSync(payload){
 function packState(){
   const sizes=SZ();
   const kho=[];
-  S.groups.forEach(g=>g.items.forEach(it=>{
-    kho.push([g.ten,it.sku,it.ten].concat(sizes.map(z=>{
-      const c=cellOf(it,z);return c.lock?"N":(c.q||0);
-    })));
-  }));
+  S.groups.forEach(g=>{
+    /* nhóm chưa có mã nào vẫn phải ghi một dòng giữ chỗ, không thì tải về là mất nhóm */
+    if(!g.items.length){kho.push([g.ten,"",""].concat(sizes.map(()=>"")));return}
+    g.items.forEach(it=>{
+      kho.push([g.ten,it.sku,it.ten].concat(sizes.map(z=>{
+        const c=cellOf(it,z);return c.lock?"N":(c.q||0);
+      })));
+    });
+  });
   const moves=S.moves.map(m=>[m.id,m.d,m.h||"",m.t,m.sku,m.size,m.q,m.track||"",
     m.order||"",m.note||"",m.huy?m.huy.d:"",m.huy?m.huy.h:"",m.digits||""]);
   const anh=[];
@@ -730,9 +734,10 @@ function unpackState(d){
   const groups=[];
   (d.kho||[]).forEach(r=>{
     const ten=String(r[0]||"").trim(),sku=String(r[1]||"").trim().toLowerCase();
-    if(!sku)return;
+    if(!ten)return;
     let g=groups.find(v=>v.ten===ten);
     if(!g){g={id:uid(),ten,items:[]};groups.push(g)}
+    if(!sku)return;      /* dòng giữ chỗ của nhóm rỗng */
     const sz={};
     sizes.forEach((z,i)=>{
       const v=r[3+i];

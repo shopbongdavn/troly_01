@@ -232,7 +232,11 @@ số vừa gõ của từng dòng; tên nhóm hiện thêm "· đặt N". Chân 
   Ảnh nào còn là link chưa tải về thì phiếu lấy hộ qua đường `/img` để vẽ được.
 - **Xác nhận đặt hàng** — cộng số đã gõ vào tồn và ghi nhật ký
 
-**Nhóm hàng.** Mỗi nhóm có ba nút ngay cạnh tên: **+ mã** thêm mã vào đúng nhóm đó,
+**Nhóm hàng.** Nhóm chưa có mã nào vẫn được giữ khi đồng bộ — trong tab `Kho` nó nằm
+ở một dòng chỉ có tên nhóm, cột SKU để trống. Đừng xoá dòng đó trong Google Sheets,
+xoá là mất nhóm.
+
+Mỗi nhóm có ba nút ngay cạnh tên: **+ mã** thêm mã vào đúng nhóm đó,
 **✎** đổi tên nhóm, **✕** xoá nhóm (chỉ xoá được khi nhóm không còn mã nào). Nhóm mới
 tạo vẫn hiện dù chưa có mã.
 
@@ -249,7 +253,7 @@ dấu hiệu cần kiểm lại kho, không phải lỗi.
 **Vẫn nên tải file sao lưu** định kỳ ở mục Cài đặt. Sheets có lịch sử sửa đổi,
 nhưng file `.json` khôi phục nhanh hơn nhiều.
 
-**Phiên bản.** Số `v2.3` cạnh tên phần mềm là bản đang chạy. Khi Cloudflare dựng
+**Phiên bản.** Số `v2.4` cạnh tên phần mềm là bản đang chạy. Khi Cloudflare dựng
 xong bản mới, trang đang mở sẽ hiện băng xanh *"Đã có bản mới"* kèm nút tải lại —
 kiểm mỗi phút một lần và mỗi khi quay lại tab. Bấm *Để sau* thì băng ẩn đi cho
 đến lần mở trang sau.
