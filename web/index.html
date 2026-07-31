@@ -10,7 +10,7 @@
   --low:#A96206; --low-soft:#FBEBD5;
   --shadow:0 1px 2px rgba(21,24,29,.05), 0 10px 30px -22px rgba(21,24,29,.5);
   --mono:ui-monospace,"SF Mono","JetBrains Mono","Roboto Mono",Menlo,Consolas,monospace;
-  --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  --sans:Arial,"Helvetica Neue",Helvetica,"Liberation Sans",sans-serif;
 }
 @media (prefers-color-scheme:dark){
   :root{
@@ -106,17 +106,17 @@ table.grid thead th{border-top:1px solid var(--line);background:var(--sunk);font
 table.grid thead th.gname{text-align:left;padding-left:14px;font-size:14px;color:var(--ink);letter-spacing:-.01em}
 table.grid td.pic,table.grid td.sku{position:sticky;z-index:2;background:var(--card)}
 table.grid td.pic{left:0}
-table.grid td.sku{left:74px;box-shadow:1px 0 0 var(--line)}
+table.grid td.sku{left:var(--wPic,64px);box-shadow:1px 0 0 var(--line)}
 table.grid thead th.gname{position:sticky;left:0;z-index:3}
 table.grid thead th.sz{font-family:var(--mono);font-size:13px;width:62px;color:var(--ink)}
 table.grid thead th.sum{width:74px;color:var(--lock);font-family:var(--mono);font-size:14px}
-table.grid td.pic{width:74px;min-width:74px;max-width:74px;padding:5px}
-td.pic .ph{width:100%;aspect-ratio:4/3;border-radius:5px;background:var(--sunk);display:grid;place-items:center;cursor:pointer;overflow:hidden;border:1px dashed var(--line2)}
+table.grid td.pic{width:64px;min-width:64px;max-width:64px;padding:5px}
+td.pic .ph{width:54px;height:54px;border-radius:5px;background:var(--sunk);display:grid;place-items:center;cursor:pointer;overflow:hidden;border:1px dashed var(--line2)}
 td.pic .ph img{width:100%;height:100%;object-fit:cover;display:block}
 td.pic .ph span{font-size:10px;color:var(--ink3);text-align:center;padding:2px}
-table.grid td.sku{text-align:left;padding:6px 12px;width:180px;min-width:150px}
-td.sku code{font-family:var(--mono);font-size:12.5px;font-weight:600;display:block;letter-spacing:-.02em}
-td.sku small{color:var(--ink3);font-size:11.5px}
+table.grid td.sku{text-align:left;padding:6px 12px;width:210px;min-width:170px}
+td.sku b.ten{display:block;font-size:14px;font-weight:700;letter-spacing:-.01em;line-height:1.25}
+td.sku code{font-family:var(--mono);font-size:11.5px;color:var(--ink3);display:block;letter-spacing:-.02em;margin-top:2px}
 td.cell{position:relative;height:44px}
 td.cell .v{display:block;width:100%;height:100%;line-height:44px;font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:15px;font-weight:600}
 td.cell.zero .v{color:var(--ink3)}
@@ -159,7 +159,7 @@ table.list tfoot td{background:var(--sunk);font-weight:640}
 #imgModal[hidden]{display:none}
 #imgModal .sheet{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;max-width:440px;width:100%;box-shadow:var(--shadow)}
 #imgModal h3{margin:0 0 4px;font-size:15px;font-weight:660}
-#imgModal .prev{width:100%;aspect-ratio:4/3;border-radius:8px;background:var(--sunk);margin:12px 0;overflow:hidden;display:grid;place-items:center}
+#imgModal .prev{width:100%;max-width:260px;aspect-ratio:1/1;margin-left:auto;margin-right:auto;border-radius:8px;background:var(--sunk);margin:12px 0;overflow:hidden;display:grid;place-items:center}
 #imgModal .prev img{width:100%;height:100%;object-fit:cover}
 #imgModal .prev span{font-size:12.5px;color:var(--ink3)}
 #mapBox .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:12px 0}
@@ -180,8 +180,9 @@ table.list tr.huy code{text-decoration:line-through}
   .stats{gap:14px} .stat b{font-size:18px}
   table.grid{min-width:520px}
   table.grid thead th.sz{width:50px}
-  table.grid td.pic{width:56px}
-  table.grid td.sku{left:56px;width:132px;min-width:132px;padding:6px 9px}
+  table.grid td.pic{width:52px;min-width:52px;max-width:52px}
+  td.pic .ph{width:42px;height:42px}
+  table.grid td.sku{width:132px;min-width:132px;padding:6px 9px}
   td.cell,td.cell .v,td.cell input,td.cell button.tap{height:40px;line-height:40px}
 }
 @media print{.noprint{display:none!important}body{background:#fff}}
@@ -323,7 +324,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="2.2", APP_TEN="phiếu đặt hàng xuất ra ảnh để gửi đi";
+const APP_VER="2.3", APP_TEN="font Arial, ảnh vuông, phiếu đặt có ảnh sản phẩm";
 const uid=()=>Math.random().toString(36).slice(2,9);
 const todayKey=()=>new Date().toISOString().slice(0,10);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -996,14 +997,22 @@ function renderBoard(){
       ${ds.map(it=>`<tr class="row">
         <td class="pic"><div class="ph" data-img="${it.id}" role="button" tabindex="0"
           title="Bấm để đổi ảnh">${it.img?`<img src="${it.img}" alt="${esc(it.ten)}">`:'<span>+ ảnh</span>'}</div></td>
-        <td class="sku"><code>${esc(it.sku)}</code><small>${esc(it.ten||"—")}</small></td>
+        <td class="sku"><b class="ten">${esc(it.ten||it.sku)}</b><code>${esc(it.sku)}</code></td>
         ${SZ().map(s=>cellHtml(it,s)).join("")}
         <td class="tot"${mode==="order"?' style="color:var(--act)"':""}>${mode==="order"?(datItem(it)||""):totItem(it)}</td>
         <td class="noprint"><button class="btn sm warn" data-del="${it.id}" title="Xoá dòng">✕</button></td>
       </tr>`).join("")}</tbody>
     </table>`).join("");
+  ghimCotAnh();
   renderFoot();renderStats();demTab();
 }
+/** Bảng co giãn nên bề rộng cột ảnh không cố định — đo thật rồi ghim cột SKU theo đó. */
+function ghimCotAnh(){
+  const pic=document.querySelector("#board td.pic");
+  document.documentElement.style.setProperty("--wPic",
+    pic?Math.round(pic.getBoundingClientRect().width)+"px":"64px");
+}
+addEventListener("resize",()=>{clearTimeout(ghimCotAnh._t);ghimCotAnh._t=setTimeout(ghimCotAnh,150)});
 function draftTotal(){
   let n=0;for(const pid in S.draft)for(const s in S.draft[pid])n+=+S.draft[pid][s]||0;
   return n;
@@ -1036,92 +1045,121 @@ function renderFoot(){
 /* ═══════════ vẽ phiếu đặt hàng ra ảnh để gửi cho nhà cung cấp ═══════════
    Vẽ thẳng lên canvas thay vì chụp màn hình: chủ động được bố cục, chỉ lấy
    những size thật sự có đặt nên ảnh gọn, chữ nét trên điện thoại. */
-function veAnhDat(){
+/** Nạp sẵn ảnh sản phẩm để vẽ lên canvas.
+    Ảnh đã lưu hẳn (data:) thì dùng thẳng; ảnh còn là link thì đi vòng qua /img
+    của Worker để có quyền CORS, không thì canvas bị "nhiễm" và không xuất được. */
+function taiAnh(src){
+  return new Promise(ok=>{
+    if(!src)return ok(null);
+    const im=new Image();
+    const xong=()=>ok(im.naturalWidth?im:null);
+    im.onload=xong;im.onerror=()=>ok(null);
+    setTimeout(()=>ok(im.naturalWidth?im:null),4000);
+    if(/^data:/i.test(src))im.src=src;
+    else{im.crossOrigin="anonymous";im.src="img?u="+encodeURIComponent(src)}
+  });
+}
+async function veAnhDat(){
   const nhom=S.groups.map(g=>({g,ds:g.items.filter(it=>datItem(it)>0)})).filter(x=>x.ds.length);
   if(!nhom.length)return null;
   /* chỉ giữ cột size nào có đặt */
   const cot=SZ().filter(z=>nhom.some(x=>x.ds.some(it=>+(S.draft[it.id]||{})[z]>0)));
   if(!cot.length)return null;
 
+  /* nạp ảnh trước, vẽ sau */
+  const ds=[];nhom.forEach(x=>x.ds.forEach(it=>ds.push(it)));
+  const anh=new Map();
+  await Promise.all(ds.map(async it=>anh.set(it.id,await taiAnh(it.img))));
+
   const R=Math.min(3,Math.max(2,Math.round(devicePixelRatio||1)+1));
-  const P=28, hHang=40, hTieu=44, wSku=300, wCot=Math.max(56,Math.min(74,Math.round(620/cot.length))), wTong=76;
-  const rong=P*2+wSku+cot.length*wCot+wTong;
-  const soHang=nhom.reduce((a,x)=>a+x.ds.length+1,0);
-  const cao=P+72+hTieu+soHang*hHang+hHang+P+26;
+  const P=28, hHang=64, hNhom=42, hTieu=44;
+  const wAnh=56, wSku=290, wCot=Math.max(58,Math.min(76,Math.round(640/cot.length))), wTong=78;
+  const rong=P*2+wAnh+wSku+cot.length*wCot+wTong;
+  const cao=P+72+hTieu+nhom.reduce((a,x)=>a+hNhom+x.ds.length*hHang,0)+hNhom+P+26;
 
   const cv=document.createElement("canvas");
   cv.width=rong*R;cv.height=cao*R;
   const c=cv.getContext("2d");
   c.scale(R,R);
-  const F=n=>`${n}px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif`;
+  const F=n=>`${n}px Arial,"Helvetica Neue",Helvetica,sans-serif`;
   const M=n=>`${n}px ui-monospace,"SF Mono",Menlo,Consolas,monospace`;
+  const xCot=i=>P+wAnh+wSku+i*wCot;
+  const xTong=P+wAnh+wSku+cot.length*wCot+wTong/2;
 
   c.fillStyle="#ffffff";c.fillRect(0,0,rong,cao);
-  /* đầu phiếu */
-  c.fillStyle="#15181d";c.font="700 "+F(24);
-  c.fillText("PHIẾU ĐẶT HÀNG",P,P+26);
-  c.fillStyle="#565d68";c.font=F(13.5);
+  c.fillStyle="#15181d";c.font="bold "+F(25);
+  c.fillText("PHIẾU ĐẶT HÀNG",P,P+27);
+  c.fillStyle="#565d68";c.font=F(14);
   const d=new Date();
-  c.fillText(`${d.toLocaleDateString("vi-VN")} · ${d.toTimeString().slice(0,5)} · tổng ${draftTotal()} đôi`,P,P+50);
+  c.fillText(`${d.toLocaleDateString("vi-VN")} · ${d.toTimeString().slice(0,5)} · tổng ${draftTotal()} đôi`,P,P+51);
 
   let y=P+72;
-  /* hàng tiêu đề */
   c.fillStyle="#e9ebee";c.fillRect(P,y,rong-P*2,hTieu);
-  c.fillStyle="#565d68";c.font="700 "+F(12);
-  c.fillText("MÃ SKU",P+12,y+27);
-  c.textAlign="center";c.font="700 "+M(14);c.fillStyle="#15181d";
-  cot.forEach((z,i)=>c.fillText(String(z),P+wSku+i*wCot+wCot/2,y+28));
-  c.fillStyle="#565d68";c.font="700 "+F(12);
-  c.fillText("TỔNG",P+wSku+cot.length*wCot+wTong/2,y+27);
+  c.fillStyle="#565d68";c.font="bold "+F(12.5);
+  c.fillText("SẢN PHẨM",P+wAnh+10,y+27);
+  c.textAlign="center";c.font="bold "+M(15);c.fillStyle="#15181d";
+  cot.forEach((z,i)=>c.fillText(String(z),xCot(i)+wCot/2,y+29));
+  c.fillStyle="#565d68";c.font="bold "+F(12.5);
+  c.fillText("TỔNG",xTong,y+27);
   c.textAlign="left";
   y+=hTieu;
 
-  const ke=(y0)=>{c.strokeStyle="#dde0e5";c.lineWidth=1;c.beginPath();
+  const ke=y0=>{c.strokeStyle="#dde0e5";c.lineWidth=1;c.beginPath();
     c.moveTo(P,y0+.5);c.lineTo(rong-P,y0+.5);c.stroke()};
 
   nhom.forEach(({g,ds})=>{
-    /* dòng tên nhóm */
-    c.fillStyle="#f2f3f5";c.fillRect(P,y,rong-P*2,hHang);
-    c.fillStyle="#15181d";c.font="700 "+F(14);
-    c.fillText(g.ten,P+12,y+26);
-    c.textAlign="right";c.fillStyle="#0f6e60";c.font="700 "+M(14);
-    c.fillText(String(datGroup(g)),rong-P-12,y+26);
+    c.fillStyle="#f2f3f5";c.fillRect(P,y,rong-P*2,hNhom);
+    c.fillStyle="#15181d";c.font="bold "+F(15);
+    c.fillText(g.ten,P+12,y+27);
+    c.textAlign="center";c.fillStyle="#0f6e60";c.font="bold "+M(15);
+    c.fillText(String(datGroup(g)),xTong,y+27);
     c.textAlign="left";
-    ke(y);y+=hHang;
+    ke(y);y+=hNhom;
 
     ds.forEach(it=>{
-      const dr=S.draft[it.id]||{};
-      c.fillStyle="#15181d";c.font="600 "+M(13);
-      c.fillText(it.sku,P+12,y+18);
-      if(it.ten){c.fillStyle="#8b929c";c.font=F(11.5);c.fillText(it.ten,P+12,y+32)}
+      const dr=S.draft[it.id]||{},im=anh.get(it.id);
+      const o=8,cs=hHang-o*2;                      /* ô ảnh vuông */
+      c.fillStyle="#f2f3f5";c.fillRect(P+4,y+o,cs,cs);
+      if(im){
+        /* cắt giữa cho vừa khung vuông, không bóp méo */
+        const k=Math.min(im.naturalWidth,im.naturalHeight);
+        const sx=(im.naturalWidth-k)/2, sy=(im.naturalHeight-k)/2;
+        c.save();c.beginPath();c.rect(P+4,y+o,cs,cs);c.clip();
+        c.drawImage(im,sx,sy,k,k,P+4,y+o,cs,cs);c.restore();
+      }
+      c.fillStyle="#15181d";c.font="bold "+F(14.5);
+      c.fillText(it.ten||it.sku,P+wAnh+10,y+27);
+      c.fillStyle="#8b929c";c.font=M(12);
+      c.fillText(it.sku,P+wAnh+10,y+44);
       c.textAlign="center";
       cot.forEach((z,i)=>{
         const v=+dr[z]||0;
-        const x=P+wSku+i*wCot;
-        if(v){c.fillStyle="#dceeea";c.fillRect(x+3,y+5,wCot-6,hHang-10);
-              c.fillStyle="#0f6e60";c.font="700 "+M(15);c.fillText(String(v),x+wCot/2,y+26)}
+        if(!v)return;
+        c.fillStyle="#dceeea";c.fillRect(xCot(i)+3,y+10,wCot-6,hHang-20);
+        c.fillStyle="#0f6e60";c.font="bold "+M(17);
+        c.fillText(String(v),xCot(i)+wCot/2,y+hHang/2+6);
       });
-      c.fillStyle="#15181d";c.font="700 "+M(15);
-      c.fillText(String(datItem(it)),P+wSku+cot.length*wCot+wTong/2,y+26);
+      c.fillStyle="#15181d";c.font="bold "+M(17);
+      c.fillText(String(datItem(it)),xTong,y+hHang/2+6);
       c.textAlign="left";
       ke(y);y+=hHang;
     });
   });
 
-  /* dòng tổng cuối */
-  c.fillStyle="#15181d";c.fillRect(P,y,rong-P*2,hHang);
-  c.fillStyle="#ffffff";c.font="700 "+F(14);
-  c.fillText("TỔNG CỘNG",P+12,y+26);
-  c.textAlign="center";c.font="700 "+M(16);
-  c.fillText(String(draftTotal()),P+wSku+cot.length*wCot+wTong/2,y+26);
+  c.fillStyle="#15181d";c.fillRect(P,y,rong-P*2,hNhom);
+  c.fillStyle="#ffffff";c.font="bold "+F(15);
+  c.fillText("TỔNG CỘNG",P+12,y+27);
+  c.textAlign="center";c.font="bold "+M(18);
+  c.fillText(String(draftTotal()),xTong,y+28);
   c.textAlign="left";
-  y+=hHang;
-  c.fillStyle="#8b929c";c.font=F(11.5);
+  y+=hNhom;
+  c.fillStyle="#8b929c";c.font=F(12);
   c.fillText("Số trong ô là số đôi cần đặt theo từng size.",P,y+18);
   return cv;
 }
 async function chupAnhDat(){
-  const cv=veAnhDat();
+  toast("Đang dựng phiếu…");
+  const cv=await veAnhDat();
   if(!cv){toast("Chưa nhập số đặt nào");return}
   const blob=await new Promise(ok=>cv.toBlob(ok,"image/png"));
   if(!blob){toast("Không tạo được ảnh");return}

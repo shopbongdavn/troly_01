@@ -178,7 +178,7 @@ chiếu PDF thì nó dừng lại hỏi, để khỏi cuốn mất việc đang 
 phần mềm, rồi bấm *Tải từ Sheets về máy*. Đừng thêm/bớt cột ở tab `Kho` — muốn
 đổi dải size thì sửa trong phần mềm rồi để nó ghi lên.
 
-**Ảnh sản phẩm.** Bấm vào ô ảnh, dán link (chuột phải vào ảnh trên TikTok Shop →
+**Ảnh sản phẩm.** Khung ảnh để vuông 1:1 cho khớp ảnh trên sàn. Bấm vào ô ảnh, dán link (chuột phải vào ảnh trên TikTok Shop →
 "Sao chép địa chỉ ảnh") hoặc chọn file từ máy. Cả hai cách đều **tải ảnh về, thu
 nhỏ còn khoảng 1–2 KB rồi lưu hẳn vào dữ liệu**, nên nguồn có hết hạn hay đổi thì
 ảnh vẫn còn. Link ảnh của các sàn thường có chữ ký hết hạn sau vài giờ — lưu
@@ -227,8 +227,9 @@ số vừa gõ của từng dòng; tên nhóm hiện thêm "· đặt N". Chân 
 
 - **Chỉ hiện mã đang đặt** — ẩn hết mã và nhóm không đặt, để soát lại cho gọn
 - **📷 Chụp phiếu đặt hàng** — vẽ ra ảnh PNG, tải về máy và copy luôn vào bộ nhớ tạm
-  nên dán thẳng vào Zalo được. Ảnh chỉ lấy những size thật sự có đặt nên gọn, có
-  tổng theo từng nhóm và tổng cộng cuối phiếu.
+  nên dán thẳng vào Zalo được. Ảnh có **ảnh sản phẩm**, tên phiên bản, mã SKU, chỉ lấy
+  những size thật sự có đặt nên gọn, kèm tổng theo từng nhóm và tổng cộng cuối phiếu.
+  Ảnh nào còn là link chưa tải về thì phiếu lấy hộ qua đường `/img` để vẽ được.
 - **Xác nhận đặt hàng** — cộng số đã gõ vào tồn và ghi nhật ký
 
 **Nhóm hàng.** Mỗi nhóm có ba nút ngay cạnh tên: **+ mã** thêm mã vào đúng nhóm đó,
@@ -248,7 +249,7 @@ dấu hiệu cần kiểm lại kho, không phải lỗi.
 **Vẫn nên tải file sao lưu** định kỳ ở mục Cài đặt. Sheets có lịch sử sửa đổi,
 nhưng file `.json` khôi phục nhanh hơn nhiều.
 
-**Phiên bản.** Số `v2.2` cạnh tên phần mềm là bản đang chạy. Khi Cloudflare dựng
+**Phiên bản.** Số `v2.3` cạnh tên phần mềm là bản đang chạy. Khi Cloudflare dựng
 xong bản mới, trang đang mở sẽ hiện băng xanh *"Đã có bản mới"* kèm nút tải lại —
 kiểm mỗi phút một lần và mỗi khi quay lại tab. Bấm *Để sau* thì băng ẩn đi cho
 đến lần mở trang sau.
