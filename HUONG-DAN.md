@@ -249,6 +249,10 @@ số vừa gõ của từng dòng; tên nhóm hiện thêm "· đặt N". Chân 
   nên đọc dòng nào cũng biết ngay đang đặt size mấy, khỏi dò ngược lên đầu bảng.
 - **Xác nhận đặt hàng** — cộng số đã gõ vào tồn và ghi nhật ký
 
+Số đang gõ ở tab Đặt hàng **cũng được đồng bộ**, nên gõ ở điện thoại lúc đi kiểm kho
+rồi mở máy tính là thấy nguyên, in phiếu ở đâu cũng được. Trong Google Sheets nó nằm
+ở tab `CaiDat`, dòng khoá `dathang`.
+
 **Nhóm hàng.** Nhóm chưa có mã nào vẫn được giữ khi đồng bộ — trong tab `Kho` nó nằm
 ở một dòng chỉ có tên nhóm, cột SKU để trống. Đừng xoá dòng đó trong Google Sheets,
 xoá là mất nhóm.
@@ -270,7 +274,7 @@ dấu hiệu cần kiểm lại kho, không phải lỗi.
 **Vẫn nên tải file sao lưu** định kỳ ở mục Cài đặt. Sheets có lịch sử sửa đổi,
 nhưng file `.json` khôi phục nhanh hơn nhiều.
 
-**Phiên bản.** Số `v2.7` cạnh tên phần mềm là bản đang chạy. Khi Cloudflare dựng
+**Phiên bản.** Số `v2.8` cạnh tên phần mềm là bản đang chạy. Khi Cloudflare dựng
 xong bản mới, trang đang mở sẽ hiện băng xanh *"Đã có bản mới"* kèm nút tải lại —
 kiểm mỗi phút một lần và mỗi khi quay lại tab. Bấm *Để sau* thì băng ẩn đi cho
 đến lần mở trang sau.

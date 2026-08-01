@@ -349,7 +349,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="2.7", APP_TEN="phiếu kẻ ô đủ size, điện thoại đặt hàng thấy hết dải size";
+const APP_VER="2.8", APP_TEN="số đặt hàng đồng bộ giữa điện thoại và máy tính";
 const uid=()=>Math.random().toString(36).slice(2,9);
 const todayKey=()=>new Date().toISOString().slice(0,10);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -677,7 +677,6 @@ function save(opt){
     try{localStorage.setItem(KEY,JSON.stringify(S))}
     catch(e){toast("Không lưu được — bộ nhớ trình duyệt đã đầy. Hãy xoá bớt ảnh sản phẩm.")}
   },120);
-  /* draft đặt hàng chỉ là nháp trong máy, không cần đẩy lên Sheets */
   if(!(opt&&opt.local))syncSoon();
 }
 
@@ -751,7 +750,33 @@ function packState(){
     m.order||"",m.note||"",m.huy?m.huy.d:"",m.huy?m.huy.h:"",m.digits||""]);
   const anh=[];
   S.groups.forEach(g=>g.items.forEach(it=>{if(it.img)anh.push([it.sku,it.img])}));
-  return {sizes,kho,moves,anh,cai:{low:S.settings.low,prefix:S.settings.prefix}};
+  /* Số đang đặt cũng phải đi theo, không thì gõ ở điện thoại mà máy tính không thấy.
+     Khoá theo mã SKU chứ không theo mã nội bộ, vì mã nội bộ sinh lại mỗi lần tải về. */
+  const dat=[];
+  for(const pid in S.draft){
+    const x=items().find(v=>v.it.id===pid);
+    if(!x)continue;
+    for(const z in S.draft[pid]){
+      const q=+S.draft[pid][z]||0;
+      if(q>0)dat.push([x.it.sku,+z,q]);
+    }
+  }
+  return {sizes,kho,moves,anh,
+    cai:{low:S.settings.low,prefix:S.settings.prefix,dathang:JSON.stringify(dat)}};
+}
+/** Đổi danh sách số đặt (theo mã SKU) về dạng khoá theo mã nội bộ mà giao diện dùng. */
+function draftTuSku(dat,groups){
+  const map={};
+  (dat||[]).forEach(r=>{
+    const sku=String(r[0]||"").toLowerCase();
+    let it=null;
+    groups.some(g=>{const f=g.items.find(v=>v.sku===sku);if(f){it=f;return true}return false});
+    if(!it)return;
+    const q=+r[2]||0;if(q<=0)return;
+    map[it.id]=map[it.id]||{};
+    map[it.id][+r[1]]=q;
+  });
+  return map;
 }
 function unpackState(d){
   const sizes=(d.sizes&&d.sizes.length?d.sizes:SZ()).map(Number);
@@ -777,7 +802,9 @@ function unpackState(d){
     if(r[10])m.huy={d:String(r[10]),h:String(r[11]||"")};
     return m;
   });
-  return {groups,moves,sizes,cai:d.cai||{}};
+  let dat=[];
+  try{dat=JSON.parse((d.cai&&d.cai.dathang)||"[]")}catch(e){}
+  return {groups,moves,sizes,cai:d.cai||{},draft:draftTuSku(dat,groups)};
 }
 
 async function syncPull(quiet){
@@ -797,7 +824,7 @@ async function syncPull(quiet){
     S.settings.sizes=u.sizes;
     if(u.cai.low!==undefined&&u.cai.low!=="")S.settings.low=+u.cai.low||0;
     if(u.cai.prefix!==undefined)S.settings.prefix=String(u.cai.prefix||"");
-    S.ver=j.ver||0;S.draft={};
+    S.ver=j.ver||0;S.draft=u.draft||{};
     save({local:true});renderAll();hideConflict();
     setSync("ok",`Đã tải về ${u.groups.reduce((a,g)=>a+g.items.length,0)} mã hàng · bản ${S.ver}`);
   }catch(e){setSync("err",String(e.message||e))}
@@ -826,12 +853,12 @@ async function syncRefresh(){
   try{
     const j=await callSync({action:"pull"});
     if((j.ver||0)===(S.ver||0))return;          // chưa ai sửa, khỏi động vào
-    if(draftTotal()>0||pending){                 // đang dở việc thì hỏi, không tự đè
-      setSync("conflict");showConflict(j.ver);return;
-    }
+    /* số đang đặt nay cũng đồng bộ nên không cần chặn nữa; chỉ còn bảng đối chiếu
+       PDF là việc dở dang thật sự chưa đẩy lên, gặp thì dừng lại hỏi */
+    if(pending){setSync("conflict");showConflict(j.ver);return}
     const u=unpackState(j.data||{});
     if(!u.groups.length)return;
-    S.groups=u.groups;S.moves=u.moves;S.settings.sizes=u.sizes;
+    S.groups=u.groups;S.moves=u.moves;S.settings.sizes=u.sizes;S.draft=u.draft||{};
     S.ver=j.ver||0;save({local:true});renderAll();hideConflict();
     setSync("ok","Vừa tải bản mới từ Sheets · bản "+S.ver);
     toast("Máy khác vừa cập nhật — đã tải bản mới về");
@@ -1900,7 +1927,7 @@ document.addEventListener("input",e=>{
     S.draft[pid]=S.draft[pid]||{};
     const v=Math.max(0,+t.value||0);
     if(v)S.draft[pid][s]=v;else delete S.draft[pid][s];
-    save({local:true});
+    save();
     /* cập nhật thẳng ô tổng của dòng và của nhóm, không vẽ lại cả bảng để khỏi mất chỗ đang gõ */
     const x=items().find(v2=>v2.it.id===pid);
     if(x){
