@@ -1,3 +1,4 @@
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Kho & Đặt hàng — Ijomi</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2315181D'/%3E%3Ctext x='16' y='22' font-family='monospace' font-size='15' font-weight='700' fill='%23fff' text-anchor='middle'%3EIJ%3C/text%3E%3C/svg%3E">
 <style>
@@ -134,6 +135,13 @@ td.cell.locked button.tap{color:var(--lock-ink)}
 td.tot{width:74px;font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:700;font-size:15px;background:var(--sunk)}
 td.act{width:44px}
 tr.row:hover td:not(.locked){background:var(--sunk)}
+/* đang gõ ở dòng nào thì sáng cả dòng đó, để trên điện thoại biết mình đang ở mã nào */
+tr.row:focus-within td.pic,tr.row:focus-within td.sku,
+tr.row:focus-within td.tot,tr.row:focus-within td.cell:not(.locked){background:var(--act-soft)}
+tr.row:focus-within td.sku{box-shadow:1px 0 0 var(--line),inset 3px 0 0 var(--act)}
+/* ô đã điền số đặt: tô xanh để nhìn phát biết đã đặt chỗ nào */
+td.cell.dat{background:var(--act-soft)}
+td.cell.dat input{color:var(--act);font-weight:700}
 .gfoot{display:flex;gap:8px;padding:12px 16px;flex-wrap:wrap;align-items:center;border-top:1px solid var(--line)}
 
 /* ---------- vùng thả PDF ---------- */
@@ -176,6 +184,11 @@ table.list tr.huy code{text-decoration:line-through}
 .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(150%);background:var(--ink);color:var(--bg);padding:11px 18px;border-radius:99px;font-size:13.5px;font-weight:560;box-shadow:var(--shadow);z-index:60;transition:transform .22s cubic-bezier(.2,.9,.3,1.2);max-width:92vw;text-align:center}
 .toast.on{transform:translateX(-50%) translateY(0)}
 @media(prefers-reduced-motion:reduce){.toast{transition:none}}
+@media(max-width:820px){
+  /* dưới 16px là Safari/Chrome trên điện thoại tự phóng to khi bấm vào ô nhập */
+  input[type=text],input[type=number],select,textarea,td.cell input{font-size:16px}
+  td.cell input{font-weight:700}
+}
 @media(max-width:640px){
   .stats{gap:14px} .stat b{font-size:18px}
   table.grid{min-width:520px}
@@ -183,7 +196,7 @@ table.list tr.huy code{text-decoration:line-through}
   table.grid td.pic{width:52px;min-width:52px;max-width:52px}
   td.pic .ph{width:42px;height:42px}
   table.grid td.sku{width:132px;min-width:132px;padding:6px 9px}
-  td.cell,td.cell .v,td.cell input,td.cell button.tap{height:40px;line-height:40px}
+  td.cell,td.cell .v,td.cell input,td.cell button.tap{height:46px;line-height:46px}
 }
 @media print{.noprint{display:none!important}body{background:#fff}}
 </style>
@@ -324,7 +337,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="2.4", APP_TEN="giữ được nhóm hàng chưa có mã nào";
+const APP_VER="2.5", APP_TEN="hết tự phóng to trên điện thoại";
 const uid=()=>Math.random().toString(36).slice(2,9);
 const todayKey=()=>new Date().toISOString().slice(0,10);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -953,12 +966,13 @@ function cellHtml(it,s){
   if(mode==="edit")
     return c.lock
       ? `<td class="${cls.join(" ")}"><span class="v">N</span></td>`
-      : `<td class="${cls.join(" ")}"><input type="number" min="0" step="1" value="${c.q||""}"
+      : `<td class="${cls.join(" ")}"><input type="number" inputmode="numeric" min="0" step="1" value="${c.q||""}"
           data-q="${id}" aria-label="Tồn size ${s}"></td>`;
   if(mode==="order"){
     if(c.lock)return `<td class="${cls.join(" ")}"><span class="v">N</span></td>`;
     const d=(S.draft[it.id]||{})[s]||"";
-    return `<td class="${cls.join(" ")}"><input type="number" min="0" step="1" value="${d}"
+    if(d)cls.push("dat");
+    return `<td class="${cls.join(" ")}"><input type="number" inputmode="numeric" min="0" step="1" value="${d}"
       data-o="${id}" aria-label="Đặt thêm size ${s}"></td>`;
   }
   return `<td class="${cls.join(" ")}"><span class="v">${c.lock?"N":(c.q||"")}</span></td>`;
@@ -1854,6 +1868,7 @@ document.addEventListener("input",e=>{
       const tb=t.closest("table");
       const gs=tb&&tb.querySelector(`[data-datg="${x.g.id}"]`);
       if(gs)gs.textContent=datGroup(x.g)?" · đặt "+datGroup(x.g):"";
+      t.parentElement.classList.toggle("dat",v>0);
     }
     renderFoot();return;
   }

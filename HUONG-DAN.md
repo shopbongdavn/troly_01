@@ -222,6 +222,13 @@ Bấm nút **+ Thêm N mã chưa có vào kho** là tạo hết một lượt, h
 tồn 0. Sau đó vào *Sửa tồn thực tế* nhập số rồi nạp lại file — không phải gõ tay từng
 dòng.
 
+**Dùng trên điện thoại.** Ô nhập để cỡ chữ 16px trở lên vì dưới mức đó Safari và
+Chrome trên điện thoại tự phóng to trang mỗi lần bấm vào ô. Ô cao 46px cho dễ bấm,
+và bật bàn phím số thay vì bàn phím chữ.
+
+Đang gõ ở dòng nào thì cả dòng đó sáng lên kèm vạch xanh bên trái, nên kéo ngang
+xem size vẫn biết mình đang ở mã nào. Ô đã điền số đặt cũng tô xanh.
+
 **Đặt hàng.** Ở chế độ *Đặt hàng*, cột cuối đổi tiêu đề thành **Tổng** và cộng ngang
 số vừa gõ của từng dòng; tên nhóm hiện thêm "· đặt N". Chân bảng có ba nút:
 
@@ -253,7 +260,7 @@ dấu hiệu cần kiểm lại kho, không phải lỗi.
 **Vẫn nên tải file sao lưu** định kỳ ở mục Cài đặt. Sheets có lịch sử sửa đổi,
 nhưng file `.json` khôi phục nhanh hơn nhiều.
 
-**Phiên bản.** Số `v2.4` cạnh tên phần mềm là bản đang chạy. Khi Cloudflare dựng
+**Phiên bản.** Số `v2.5` cạnh tên phần mềm là bản đang chạy. Khi Cloudflare dựng
 xong bản mới, trang đang mở sẽ hiện băng xanh *"Đã có bản mới"* kèm nút tải lại —
 kiểm mỗi phút một lần và mỗi khi quay lại tab. Bấm *Để sau* thì băng ẩn đi cho
 đến lần mở trang sau.
