@@ -229,8 +229,13 @@ nên cuộn tới đâu cũng biết cột nào là size nào, khỏi kéo ngư�
 Chrome trên điện thoại tự phóng to trang mỗi lần bấm vào ô. Ô cao 46px cho dễ bấm,
 và bật bàn phím số thay vì bàn phím chữ.
 
-Đang gõ ở dòng nào thì cả dòng đó sáng lên kèm vạch xanh bên trái, nên kéo ngang
-xem size vẫn biết mình đang ở mã nào. Ô đã điền số đặt cũng tô xanh.
+Đang gõ ở dòng nào thì cả dòng đó sáng lên kèm vạch xanh bên trái. Ô đã điền số đặt
+cũng tô xanh.
+
+Riêng chế độ **Đặt hàng trên điện thoại**, phần mềm giấu cột tên và mã SKU để nhường
+chỗ — nhờ vậy **hiện hết dải size trên một màn, không phải kéo ngang**. Ảnh sản phẩm
+vẫn giữ để nhận ra mã, tên nhóm chuyển thành dải riêng phía trên bảng. Xoay ngang máy
+hoặc mở trên máy tính thì cột tên hiện lại như cũ.
 
 **Đặt hàng.** Ở chế độ *Đặt hàng*, cột cuối đổi tiêu đề thành **Tổng** và cộng ngang
 số vừa gõ của từng dòng; tên nhóm hiện thêm "· đặt N". Chân bảng có ba nút:
@@ -240,8 +245,8 @@ số vừa gõ của từng dòng; tên nhóm hiện thêm "· đặt N". Chân 
   nên dán thẳng vào Zalo được. Ảnh có **ảnh sản phẩm**, tên phiên bản, mã SKU, chỉ lấy
   những size thật sự có đặt nên gọn, kèm tổng theo từng nhóm và tổng cộng cuối phiếu.
   Ảnh nào còn là link chưa tải về thì phiếu lấy hộ qua đường `/img` để vẽ được.
-  Mỗi ô ghi kèm số size ngay bên trên số lượng, nên đọc dòng nào cũng biết ngay đang
-  đặt size mấy.
+  Phiếu kẻ ô rõ ràng, hiện **đủ dải size** và ghi lại số size ở từng ô của mọi dòng,
+  nên đọc dòng nào cũng biết ngay đang đặt size mấy, khỏi dò ngược lên đầu bảng.
 - **Xác nhận đặt hàng** — cộng số đã gõ vào tồn và ghi nhật ký
 
 **Nhóm hàng.** Nhóm chưa có mã nào vẫn được giữ khi đồng bộ — trong tab `Kho` nó nằm
@@ -265,7 +270,7 @@ dấu hiệu cần kiểm lại kho, không phải lỗi.
 **Vẫn nên tải file sao lưu** định kỳ ở mục Cài đặt. Sheets có lịch sử sửa đổi,
 nhưng file `.json` khôi phục nhanh hơn nhiều.
 
-**Phiên bản.** Số `v2.6` cạnh tên phần mềm là bản đang chạy. Khi Cloudflare dựng
+**Phiên bản.** Số `v2.7` cạnh tên phần mềm là bản đang chạy. Khi Cloudflare dựng
 xong bản mới, trang đang mở sẽ hiện băng xanh *"Đã có bản mới"* kèm nút tải lại —
 kiểm mỗi phút một lần và mỗi khi quay lại tab. Bấm *Để sau* thì băng ẩn đi cho
 đến lần mở trang sau.
