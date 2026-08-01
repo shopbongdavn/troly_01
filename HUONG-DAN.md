@@ -222,6 +222,9 @@ Bấm nút **+ Thêm N mã chưa có vào kho** là tạo hết một lượt, h
 tồn 0. Sau đó vào *Sửa tồn thực tế* nhập số rồi nạp lại file — không phải gõ tay từng
 dòng.
 
+**Danh sách dài.** Trong bảng tồn kho, cứ 8 dòng lại chèn thêm một hàng ghi số size,
+nên cuộn tới đâu cũng biết cột nào là size nào, khỏi kéo ngược lên đầu bảng.
+
 **Dùng trên điện thoại.** Ô nhập để cỡ chữ 16px trở lên vì dưới mức đó Safari và
 Chrome trên điện thoại tự phóng to trang mỗi lần bấm vào ô. Ô cao 46px cho dễ bấm,
 và bật bàn phím số thay vì bàn phím chữ.
@@ -237,6 +240,8 @@ số vừa gõ của từng dòng; tên nhóm hiện thêm "· đặt N". Chân 
   nên dán thẳng vào Zalo được. Ảnh có **ảnh sản phẩm**, tên phiên bản, mã SKU, chỉ lấy
   những size thật sự có đặt nên gọn, kèm tổng theo từng nhóm và tổng cộng cuối phiếu.
   Ảnh nào còn là link chưa tải về thì phiếu lấy hộ qua đường `/img` để vẽ được.
+  Mỗi ô ghi kèm số size ngay bên trên số lượng, nên đọc dòng nào cũng biết ngay đang
+  đặt size mấy.
 - **Xác nhận đặt hàng** — cộng số đã gõ vào tồn và ghi nhật ký
 
 **Nhóm hàng.** Nhóm chưa có mã nào vẫn được giữ khi đồng bộ — trong tab `Kho` nó nằm
@@ -260,7 +265,7 @@ dấu hiệu cần kiểm lại kho, không phải lỗi.
 **Vẫn nên tải file sao lưu** định kỳ ở mục Cài đặt. Sheets có lịch sử sửa đổi,
 nhưng file `.json` khôi phục nhanh hơn nhiều.
 
-**Phiên bản.** Số `v2.5` cạnh tên phần mềm là bản đang chạy. Khi Cloudflare dựng
+**Phiên bản.** Số `v2.6` cạnh tên phần mềm là bản đang chạy. Khi Cloudflare dựng
 xong bản mới, trang đang mở sẽ hiện băng xanh *"Đã có bản mới"* kèm nút tải lại —
 kiểm mỗi phút một lần và mỗi khi quay lại tab. Bấm *Để sau* thì băng ẩn đi cho
 đến lần mở trang sau.

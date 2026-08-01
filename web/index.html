@@ -104,6 +104,9 @@ table.grid{border-collapse:separate;border-spacing:0;width:100%;min-width:600px}
 table.grid th,table.grid td{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:0;text-align:center}
 table.grid{border-left:1px solid var(--line)}
 table.grid thead th{border-top:1px solid var(--line);background:var(--sunk);font-size:12px;font-weight:700;padding:9px 6px;color:var(--ink2)}
+/* danh sách dài thì chèn lại hàng size sau mỗi 8 dòng, khỏi phải kéo ngược lên đầu bảng */
+tr.lapsize td{background:var(--sunk2);text-align:center;font-family:var(--mono);font-size:11.5px;font-weight:700;color:var(--ink2);padding:4px 0}
+tr.lapsize td.nhac{text-align:left;padding-left:12px;font-family:var(--sans);font-size:11px;color:var(--ink3)}
 table.grid thead th.gname{text-align:left;padding-left:14px;font-size:14px;color:var(--ink);letter-spacing:-.01em}
 table.grid td.pic,table.grid td.sku{position:sticky;z-index:2;background:var(--card)}
 table.grid td.pic{left:0}
@@ -337,7 +340,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="2.5", APP_TEN="hết tự phóng to trên điện thoại";
+const APP_VER="2.6", APP_TEN="ghi số size ngay trong từng ô, hàng size dính khi cuộn";
 const uid=()=>Math.random().toString(36).slice(2,9);
 const todayKey=()=>new Date().toISOString().slice(0,10);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -1013,7 +1016,10 @@ function renderBoard(){
       </tr></thead>
       <tbody>${ds.length?"":`<tr><td colspan="${SZ().length+4}" class="empty" style="padding:18px">
         Nhóm này chưa có mã nào — bấm <b>+ mã</b> ở trên để thêm.</td></tr>`}
-      ${ds.map(it=>`<tr class="row">
+      ${ds.map((it,i)=>`${i>0&&i%8===0?`<tr class="lapsize">
+        <td class="nhac" colspan="2">${esc(g.ten)}</td>
+        ${SZ().map(z=>`<td>${z}</td>`).join("")}<td></td><td class="noprint"></td></tr>`:""}
+      <tr class="row">
         <td class="pic"><div class="ph" data-img="${it.id}" role="button" tabindex="0"
           title="Bấm để đổi ảnh">${it.img?`<img src="${it.img}" alt="${esc(it.ten)}">`:'<span>+ ảnh</span>'}</div></td>
         <td class="sku"><b class="ten">${esc(it.ten||it.sku)}</b><code>${esc(it.sku)}</code></td>
@@ -1091,8 +1097,8 @@ async function veAnhDat(){
   await Promise.all(ds.map(async it=>anh.set(it.id,await taiAnh(it.img))));
 
   const R=Math.min(3,Math.max(2,Math.round(devicePixelRatio||1)+1));
-  const P=28, hHang=64, hNhom=42, hTieu=44;
-  const wAnh=56, wSku=290, wCot=Math.max(58,Math.min(76,Math.round(640/cot.length))), wTong=78;
+  const P=28, hHang=68, hNhom=42, hTieu=44;
+  const wAnh=56, wSku=290, wCot=Math.max(66,Math.min(84,Math.round(700/cot.length))), wTong=78;
   const rong=P*2+wAnh+wSku+cot.length*wCot+wTong;
   const cao=P+72+hTieu+nhom.reduce((a,x)=>a+hNhom+x.ds.length*hHang,0)+hNhom+P+26;
 
@@ -1154,12 +1160,15 @@ async function veAnhDat(){
       cot.forEach((z,i)=>{
         const v=+dr[z]||0;
         if(!v)return;
-        c.fillStyle="#dceeea";c.fillRect(xCot(i)+3,y+10,wCot-6,hHang-20);
-        c.fillStyle="#0f6e60";c.font="bold "+M(17);
-        c.fillText(String(v),xCot(i)+wCot/2,y+hHang/2+6);
+        c.fillStyle="#dceeea";c.fillRect(xCot(i)+3,y+8,wCot-6,hHang-16);
+        /* ghi cả số size trong ô, để nhìn dòng nào cũng biết ngay, khỏi dò ngược lên đầu bảng */
+        c.fillStyle="#5a8f85";c.font="bold "+M(11.5);
+        c.fillText("size "+z,xCot(i)+wCot/2,y+25);
+        c.fillStyle="#0f6e60";c.font="bold "+M(19);
+        c.fillText(String(v),xCot(i)+wCot/2,y+47);
       });
-      c.fillStyle="#15181d";c.font="bold "+M(17);
-      c.fillText(String(datItem(it)),xTong,y+hHang/2+6);
+      c.fillStyle="#15181d";c.font="bold "+M(18);
+      c.fillText(String(datItem(it)),xTong,y+hHang/2+7);
       c.textAlign="left";
       ke(y);y+=hHang;
     });
