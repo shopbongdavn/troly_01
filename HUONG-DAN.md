@@ -245,8 +245,10 @@ số vừa gõ của từng dòng; tên nhóm hiện thêm "· đặt N". Chân 
   nên dán thẳng vào Zalo được. Ảnh có **ảnh sản phẩm**, tên phiên bản, mã SKU, chỉ lấy
   những size thật sự có đặt nên gọn, kèm tổng theo từng nhóm và tổng cộng cuối phiếu.
   Ảnh nào còn là link chưa tải về thì phiếu lấy hộ qua đường `/img` để vẽ được.
-  Phiếu kẻ ô rõ ràng, hiện **đủ dải size** và ghi lại số size ở từng ô của mọi dòng,
-  nên đọc dòng nào cũng biết ngay đang đặt size mấy, khỏi dò ngược lên đầu bảng.
+  Phiếu kẻ ô rõ ràng, **chỉ hiện size nào thật sự có đặt** nên không thừa cột trống;
+  cột sản phẩm cũng tự co vừa đúng chữ. Mỗi ô ghi lại số size của chính nó, ô có đặt
+  tô xanh đậm chữ trắng, ô không đặt để size xám nhạt. Dòng chẵn lẻ khác nền và mỗi
+  nhóm có dải đen riêng, nhìn là tách được từng dòng.
 - **Xác nhận đặt hàng** — cộng số đã gõ vào tồn và ghi nhật ký
 
 Số đang gõ ở tab Đặt hàng **cũng được đồng bộ**, nên gõ ở điện thoại lúc đi kiểm kho
@@ -274,7 +276,7 @@ dấu hiệu cần kiểm lại kho, không phải lỗi.
 **Vẫn nên tải file sao lưu** định kỳ ở mục Cài đặt. Sheets có lịch sử sửa đổi,
 nhưng file `.json` khôi phục nhanh hơn nhiều.
 
-**Phiên bản.** Số `v2.8` cạnh tên phần mềm là bản đang chạy. Khi Cloudflare dựng
+**Phiên bản.** Số `v2.9` cạnh tên phần mềm là bản đang chạy. Khi Cloudflare dựng
 xong bản mới, trang đang mở sẽ hiện băng xanh *"Đã có bản mới"* kèm nút tải lại —
 kiểm mỗi phút một lần và mỗi khi quay lại tab. Bấm *Để sau* thì băng ẩn đi cho
 đến lần mở trang sau.
