@@ -1,24 +1,119 @@
 # Kho & Đặt hàng — hướng dẫn cài đặt
 
 Phần mềm là một trang HTML chạy thẳng trong trình duyệt. Dữ liệu lưu trong máy
-(localStorage) để thao tác tức thì, và đồng bộ lên một file Google Sheets để
-nhiều máy dùng chung.
+(localStorage) để thao tác tức thì, và đồng bộ lên một kho chung để nhiều máy
+cùng dùng.
+
+Có hai cách làm kho chung. **Nên dùng Firebase.**
+
+| | Firebase Realtime Database | Google Sheets |
+|---|---|---|
+| Máy kia thấy sau | dưới 1 giây, tự hiện | 15 giây, phải chờ dò |
+| Hai máy gõ cùng lúc | mỗi ô một chỗ riêng, không đè nhau | cả bảng ghi đè một lần, dễ mất |
+| Đang gõ mà mất mạng | giữ lại rồi tự gửi | giữ lại rồi tự gửi |
+| Xem/sửa thẳng bằng tay | phải vào Firebase Console | mở bảng tính là thấy |
 
 - `web/index.html` — phần mềm
-- `apps-script/Code.gs` — code đặt trên Google để đọc/ghi Sheets
+- `apps-script/Code.gs` — chỉ cần khi dùng cách Google Sheets
 
-Làm theo hai phần dưới đây, khoảng 15 phút. **Làm phần A trước.**
+**Làm phần A (Firebase) rồi phần C (Cloudflare) là xong, khoảng 10 phút.**
+Phần B chỉ dành cho ai muốn dùng Google Sheets thay cho Firebase.
 
 ---
 
-## A. Google Sheets làm nơi lưu chung
+## A. Firebase làm nơi lưu chung  *(nên dùng)*
 
-### A1. Tạo file Sheets
+### A1. Tạo dự án
+
+1. Vào <https://console.firebase.google.com> → **Add project / Thêm dự án**.
+2. Đặt tên, ví dụ `kho-ijomi`. Phần Google Analytics **tắt đi**, không cần.
+3. Bấm **Create project** và chờ xong.
+
+### A2. Bật Realtime Database
+
+1. Menu trái → **Build → Realtime Database** → **Create Database**.
+2. Chọn vùng gần nhất: **Singapore (asia-southeast1)**.
+3. Chọn **Start in locked mode** (khoá hết). Sẽ mở đúng phần mình cần ở bước sau.
+4. Xong thì phía trên hiện địa chỉ dạng
+   `https://kho-ijomi-default-rtdb.asia-southeast1.firebasedatabase.app`.
+   **Copy để dành**, đây là `FIREBASE_URL`.
+
+### A3. Tự nghĩ ra một "mã kho"
+
+Đây là chuỗi bí mật, cũng là tên ngăn chứa dữ liệu. Tự đặt một chuỗi dài, khó
+đoán, chỉ gồm chữ thường / số / dấu gạch — ví dụ:
+
+```
+kho-ijomi-7q3f9zt2wm
+```
+
+**Ai không biết chuỗi này thì không đọc được, không ghi được gì.** Đừng đặt
+ngắn kiểu `kho` hay `test`.
+
+### A4. Đặt Rules
+
+Vào thẻ **Rules** của Realtime Database, xoá hết và dán vào (nhớ thay bằng mã
+kho của bạn ở cả hai chỗ có sẵn):
+
+```json
+{
+  "rules": {
+    "kho-ijomi-7q3f9zt2wm": {
+      ".read": true,
+      ".write": true
+    }
+  }
+}
+```
+
+Bấm **Publish**. Vì `.read`/`.write` chỉ nằm bên trong nhánh mã kho, người
+ngoài không liệt kê được các nhánh và không đoán ra tên nhánh, nên không đụng
+được vào dữ liệu.
+
+### A5. Khai báo trên Cloudflare — làm một lần, mọi máy dùng được
+
+Vào Cloudflare → dự án `dathang` → **Settings → Variables and Secrets**, thêm
+hai mục, cả hai để kiểu **Secret**:
+
+| Tên | Giá trị |
+|---|---|
+| `FIREBASE_URL` | địa chỉ ở bước A2 |
+| `FIREBASE_MA` | mã kho ở bước A3 |
+
+Rồi **Deploy** lại. Từ đó mở địa chỉ trang trên bất kỳ máy nào cũng tự nối,
+không phải nhập gì.
+
+> Cloudflare có thể gợi ý "Update your wrangler config file with these
+> changes" — **bỏ qua**, làm theo là mã kho lọt vào GitHub.
+
+### A6. Đưa dữ liệu đang có lên
+
+Mở trang bằng chính cái máy đang giữ dữ liệu đầy đủ nhất:
+
+- Firebase còn trống → phần mềm **tự đưa dữ liệu máy đó lên** làm gốc, xong.
+- Muốn ép ghi đè → **Cài đặt → Đưa dữ liệu máy này lên Firebase**.
+
+Sau đó mở trên điện thoại, máy khác — số liệu hiện y hệt trong khoảng một giây.
+
+### A7. Kiểm tra nhanh
+
+1. Mở trang trên máy tính và trên điện thoại.
+2. Điện thoại: vào tab **Đặt hàng**, gõ một số bất kỳ.
+3. Máy tính **không bấm gì cả** — trong khoảng một giây con số đó phải hiện ra.
+
+Nếu chữ trên đầu trang báo `Lỗi đồng bộ`, xem lại: địa chỉ có đúng không, mã
+kho trong Rules có trùng với `FIREBASE_MA` không.
+
+---
+
+## B. Google Sheets làm nơi lưu chung  *(cách cũ, chỉ dùng khi không muốn Firebase)*
+
+### B1. Tạo file Sheets
 
 Mở [sheet.new](https://sheet.new), đặt tên ví dụ `Kho Ijomi`. Không cần tạo cột
 gì cả — phần mềm tự tạo 4 tab khi lưu lần đầu.
 
-### A2. Dán code
+### B2. Dán code
 
 Trong file Sheets vừa tạo: **Tiện ích mở rộng → Apps Script**
 (Extensions → Apps Script).
@@ -26,7 +121,7 @@ Trong file Sheets vừa tạo: **Tiện ích mở rộng → Apps Script**
 Xoá hết code mẫu trong ô soạn thảo, dán toàn bộ nội dung file
 `apps-script/Code.gs` vào.
 
-### A3. Đổi mã bảo vệ
+### B3. Đổi mã bảo vệ
 
 Sửa dòng đầu:
 
@@ -41,7 +136,7 @@ Dòng `SHEET_ID` để trống vì script nằm ngay trong file Sheets.
 
 Bấm biểu tượng đĩa mềm để lưu.
 
-### A4. Triển khai
+### B4. Triển khai
 
 **Triển khai → Tuỳ chọn triển khai mới** (Deploy → New deployment).
 
@@ -65,7 +160,7 @@ https://script.google.com/macros/s/AKfycb..................../exec
 > đó lên chỗ công khai. Không cần chọn "Bất kỳ ai" mức thấp hơn — mức có yêu cầu
 > đăng nhập Google sẽ chặn luôn cả phần mềm.
 
-### A5. Nối phần mềm với Sheets
+### B5. Nối phần mềm với Sheets
 
 Mở phần mềm, kéo xuống mục **Cài đặt & sao lưu → Đồng bộ Google Sheets**:
 
@@ -83,7 +178,7 @@ Bấm **Đưa dữ liệu máy này lên Sheets**. Quay lại file Sheets sẽ t
 
 Từ đó mỗi lần mở trang nó tự tải về, và mỗi thay đổi tự lưu lên sau khoảng 2 giây.
 
-### A6. Khai báo cấu hình trên Cloudflare — làm một lần, mọi máy dùng được
+### B6. Khai báo cấu hình trên Cloudflare
 
 Đây là bước quan trọng nhất để **mở địa chỉ ở bất kỳ máy nào cũng có sẵn dữ liệu**,
 không phải nhập gì. Worker sẽ tự phát cấu hình cho trang qua `/config.json`.
@@ -110,16 +205,16 @@ SHEETS_TOKEN"*. Lúc đó vẫn dán tay vào hai ô trong mục Cài đặt đ�
 
 ---
 
-## B. Đưa phần mềm lên Cloudflare Pages
+## C. Đưa phần mềm lên Cloudflare
 
-### B1. Tạo dự án
+### C1. Tạo dự án
 
 Vào [dash.cloudflare.com](https://dash.cloudflare.com) → **Workers & Pages** →
 **Create** → thẻ **Pages** → **Connect to Git**.
 
 Cho phép Cloudflare truy cập GitHub, chọn kho `shopbongdavn/troly_01`.
 
-### B2. Cấu hình
+### C2. Cấu hình
 
 Cloudflare hiện đưa "Connect to Git" vào **Workers**, không phải Pages. Hai loại
 dự án điền khác nhau — xem trên trang dự án của bạn có ô nào thì điền theo cột đó:
@@ -151,7 +246,7 @@ Bấm lưu và triển khai. Khoảng một phút sau được địa chỉ dạ
 `dathang.<tên tài khoản>.workers.dev`. Mỗi lần đẩy code mới lên
 GitHub, Cloudflare tự dựng lại.
 
-### B3. Kiểm tra
+### C3. Kiểm tra
 
 Mở địa chỉ vừa nhận trên điện thoại, điền địa chỉ Sheets và mã bảo vệ,
 bấm **Tải từ Sheets về máy**. Phải thấy đúng số liệu như trên máy tính.

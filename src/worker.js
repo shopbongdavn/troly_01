@@ -1,8 +1,10 @@
 /**
  * Worker phục vụ trang tĩnh trong web/, kèm hai đường phụ:
  *
- *   /config.json  — địa chỉ Apps Script và mã bảo vệ, lấy từ biến môi trường
- *                   (Settings -> Variables and Secrets), không nằm trong kho code.
+ *   /config.json  — địa chỉ Firebase (và Apps Script nếu còn dùng), lấy từ biến
+ *                   môi trường (Settings -> Variables and Secrets). Không nằm
+ *                   trong kho code, nên mở địa chỉ nào cũng nối sẵn mà không
+ *                   phải nhập tay trên từng máy.
  *   /img?u=...    — tải hộ ảnh sản phẩm. Ảnh trên CDN của sàn thường hết hạn
  *                   hoặc chặn nhúng từ trang khác, nên trang không tải thẳng được.
  *                   Lấy qua đây rồi lưu hẳn ảnh lại thì về sau không mất nữa.
@@ -64,6 +66,10 @@ export default {
 
     if (url.pathname === "/config.json") {
       return new Response(JSON.stringify({
+        // Firebase Realtime Database — cách đồng bộ chính
+        fu: env.FIREBASE_URL || "",
+        fm: env.FIREBASE_MA || "",
+        // Google Sheets — cách cũ, chỉ dùng khi chưa đặt Firebase
         u: env.SHEETS_URL || "",
         t: env.SHEETS_TOKEN || ""
       }), {

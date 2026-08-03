@@ -1,5 +1,5 @@
 {
-  "ver": "3.0",
-  "ten": "không mất số đang gõ, hai máy tự thấy nhau",
+  "ver": "3.1",
+  "ten": "đồng bộ bằng Firebase, máy kia thấy trong một giây",
   "ngay": "2026-08-03"
 }

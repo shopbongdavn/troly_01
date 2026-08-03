@@ -301,7 +301,21 @@ table.list tr.huy code{text-decoration:line-through}
         <input type="text" id="pfx" placeholder="để trống = tự nhận mọi mã"></label>
     </div>
     <div class="hr" style="margin:16px 0"></div>
-    <h3 style="margin:0 0 4px;font-size:13.5px;font-weight:660">Đồng bộ Google Sheets</h3>
+    <h3 style="margin:0 0 4px;font-size:13.5px;font-weight:660">Đồng bộ Firebase <span class="note" style="font-weight:400">— cách mới, nhanh và chắc hơn</span></h3>
+    <p class="note" style="margin:0 0 12px">Mỗi ô số là một chỗ riêng trên Firebase nên hai máy gõ hai ô khác nhau không đè lên nhau, và máy kia thấy ngay trong một giây. Điền vào đây thì phần Google Sheets bên dưới tự nghỉ.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px">
+      <label><span class="lbl">Địa chỉ Realtime Database</span>
+        <input type="text" id="fbUrl" placeholder="https://ten-du-an-default-rtdb.firebaseio.com"></label>
+      <label><span class="lbl">Mã kho (chuỗi bí mật trong Rules)</span>
+        <input type="text" id="fbMa" placeholder="ví dụ: kho-ijomi-9f3c1a2b"></label>
+    </div>
+    <div class="bar" style="padding:12px 0 0">
+      <button class="btn pri" id="fbDua">Đưa dữ liệu máy này lên Firebase</button>
+      <button class="btn" id="fbLay">Lấy lại từ Firebase</button>
+      <span class="note" id="fbMsg"></span>
+    </div>
+    <div class="hr" style="margin:16px 0"></div>
+    <h3 style="margin:0 0 4px;font-size:13.5px;font-weight:660">Đồng bộ Google Sheets <span class="note" style="font-weight:400">— cách cũ</span></h3>
     <p class="note" style="margin:0 0 12px" id="cfgNote">Dán địa chỉ ứng dụng web của Apps Script để nhiều máy dùng chung một kho dữ liệu. Bỏ trống thì phần mềm chỉ lưu trong máy này.</p>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px">
       <label><span class="lbl">Địa chỉ ứng dụng web</span>
@@ -349,7 +363,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="3.0", APP_TEN="không mất số đang gõ, hai máy tự thấy nhau";
+const APP_VER="3.1", APP_TEN="đồng bộ bằng Firebase, máy kia thấy trong một giây";
 const uid=()=>Math.random().toString(36).slice(2,9);
 const todayKey=()=>new Date().toISOString().slice(0,10);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -641,7 +655,7 @@ function docCsv(text){
 }
 
 /* ═══════════ dữ liệu ═══════════ */
-const DEFAULTS={sizes:[38,39,40,41,42,43,44],low:2,prefix:"",syncUrl:"",syncToken:""};
+const DEFAULTS={sizes:[38,39,40,41,42,43,44],low:2,prefix:"",syncUrl:"",syncToken:"",fbUrl:"",fbMa:""};
 function seed(){
   const mk=(sku,ten,q,lock)=>{
     const sizes={};
@@ -680,6 +694,7 @@ function save(opt){
   clearTimeout(saveT);
   saveT=setTimeout(saveNow,120);
   if(opt&&opt.local)return;
+  if(fbOn()){fbSom();return}        /* có Firebase thì đi đường Firebase */
   /* {dat:true} = chỉ sửa số đang đặt. Loại này gộp được với máy khác nên khỏi phải hỏi;
      mọi thứ khác (tồn, mã hàng, nhật ký) đụng nhau thì vẫn dừng lại hỏi cho chắc. */
   if(!(opt&&opt.dat))suaKhac=true;
@@ -698,6 +713,293 @@ const outToday=()=>S.moves.filter(m=>m.d===todayKey()&&m.t==="out"&&!m.huy).redu
 const huyToday=()=>S.moves.filter(m=>m.t==="out"&&m.huy&&m.huy.d===todayKey()).reduce((a,m)=>a+m.q,0);
 
 
+/* ═══════════ đồng bộ Firebase Realtime Database ═══════════
+   Khác hẳn cách cũ ở ba điểm:
+   1. Không đẩy cả kho mỗi lần. Chỉ gửi đúng những ô vừa đổi, mỗi ô là một
+      đường dẫn riêng (kho/<mã hàng>/<size>), nên hai máy gõ hai ô khác nhau
+      không bao giờ đè lên nhau — không còn "cái còn cái mất".
+   2. Firebase tự đẩy thay đổi về máy đang mở (kênh EventSource), không phải
+      ngồi dò từng lúc.
+   3. Cái gì mình gõ mà chưa gửi được thì giữ nguyên trong máy và gửi lại,
+      không bao giờ bị bản tải về xoá mất.                                    */
+const fbOn=()=>!!(S.settings.fbUrl||"").trim();
+function fbGoc(){
+  const u=(S.settings.fbUrl||"").trim().replace(/\/+$/,"");
+  return u+"/"+encodeURIComponent((S.settings.fbMa||"kho").trim());
+}
+function setFb(msg){const m=document.getElementById("fbMsg");if(m)m.textContent=msg||""}
+
+/* --- đổi qua đổi lại giữa dữ liệu trong máy và cây trên Firebase --- */
+function fbCay(){
+  const t={nhom:{},mh:{},kho:{},dat:{},anh:{},moves:{},cai:{}};
+  S.groups.forEach((g,i)=>{
+    t.nhom[g.id]={ten:g.ten||"",tt:i};
+    g.items.forEach((it,j)=>{
+      t.mh[it.sku]={ten:it.ten||"",gid:g.id,tt:j};
+      const k={};SZ().forEach(z=>{const c=cellOf(it,z);k[z]=c.lock?"N":(c.q||0)});
+      t.kho[it.sku]=k;
+      if(it.img)t.anh[it.sku]=it.img;
+    });
+  });
+  for(const pid in S.draft){
+    const x=items().find(v=>v.it.id===pid);if(!x)continue;
+    const d={};
+    for(const z in S.draft[pid]){const q=+S.draft[pid][z]||0;if(q>0)d[z]=q}
+    if(Object.keys(d).length)t.dat[x.it.sku]=d;
+  }
+  S.moves.forEach(m=>{t.moves[m.id]={d:m.d||"",h:m.h||"",t:m.t||"out",sku:m.sku||"",
+    size:+m.size||0,q:+m.q||0,track:m.track||"",order:m.order||"",note:m.note||"",
+    digits:m.digits||"",huyD:m.huy?m.huy.d:"",huyH:m.huy?m.huy.h:""}});
+  t.cai={low:S.settings.low,prefix:S.settings.prefix||"",sizes:SZ().join(",")};
+  return t;
+}
+const fbVeMove=(id,v)=>{
+  const m={id,d:String(v.d||""),h:String(v.h||""),t:String(v.t||"out"),
+    sku:String(v.sku||"").toLowerCase(),size:+v.size||0,q:+v.q||0,
+    track:String(v.track||""),order:String(v.order||""),note:String(v.note||""),
+    digits:String(v.digits||"")};
+  if(v.huyD)m.huy={d:String(v.huyD),h:String(v.huyH||"")};
+  return m;
+};
+/** Dựng lại toàn bộ dữ liệu trong máy từ cây trên Firebase. */
+function fbVeS(t){
+  const nhom=t.nhom||{},mh=t.mh||{},kho=t.kho||{},anh=t.anh||{},cai=t.cai||{};
+  const sz=String(cai.sizes||"").split(",").map(Number).filter(n=>n>0);
+  if(sz.length)S.settings.sizes=sz;
+  if(cai.low!==undefined&&cai.low!=="")S.settings.low=+cai.low||0;
+  if(cai.prefix!==undefined)S.settings.prefix=String(cai.prefix||"");
+  const gs=Object.keys(nhom).sort((a,b)=>(+nhom[a].tt||0)-(+nhom[b].tt||0))
+    .map(id=>({id,ten:String(nhom[id].ten||""),items:[]}));
+  const theo={};gs.forEach(g=>theo[g.id]=g);
+  Object.keys(mh).sort((a,b)=>(+mh[a].tt||0)-(+mh[b].tt||0)).forEach(sku=>{
+    const g=theo[mh[sku].gid]||gs[0];if(!g)return;
+    const o={};
+    S.settings.sizes.forEach(z=>{
+      const v=(kho[sku]||{})[z];
+      o[z]=String(v).toUpperCase()==="N"?{q:0,lock:true}:{q:Math.round(+v||0),lock:false};
+    });
+    g.items.push({id:sku,sku,ten:String(mh[sku].ten||""),img:anh[sku]||"",sizes:o});
+  });
+  S.groups=gs;
+  S.moves=Object.keys(t.moves||{}).map(id=>fbVeMove(id,t.moves[id]||{}))
+    .sort((a,b)=>(a.d+a.h)<(b.d+b.h)?1:-1);
+  const dr={};
+  const dat=t.dat||{};
+  for(const sku in dat)for(const z in dat[sku]){
+    const q=+dat[sku][z]||0;if(q>0){(dr[sku]=dr[sku]||{})[+z]=q}
+  }
+  S.draft=dr;                       /* mã nội bộ = mã SKU nên khoá luôn khớp */
+}
+/** Đắp một mớ đường dẫn lá vào dữ liệu đang có, không đụng tới chỗ khác. */
+function fbDatLa(m){
+  for(const p in m){
+    const a=p.split("/"),v=m[p];
+    if(a[0]==="kho"){
+      const x=findSku(a[1]);if(!x)continue;
+      const c=cellOf(x.it,+a[2]);
+      if(v===null){c.q=0;c.lock=false}
+      else if(String(v).toUpperCase()==="N"){c.q=0;c.lock=true}
+      else{c.q=Math.round(+v||0);c.lock=false}
+    }else if(a[0]==="dat"){
+      const x=findSku(a[1]);if(!x)continue;
+      const d=S.draft[x.it.id]=S.draft[x.it.id]||{};
+      if(v===null||!(+v>0))delete d[+a[2]];else d[+a[2]]=Math.round(+v);
+    }else if(a[0]==="anh"){
+      const x=findSku(a[1]);if(x)x.it.img=v===null?"":String(v);
+    }else if(a[0]==="moves"){
+      const i=S.moves.findIndex(m2=>m2.id===a[1]);
+      if(v===null){if(i>=0)S.moves.splice(i,1);continue}
+      const m2=fbVeMove(a[1],v);
+      if(i>=0)S.moves[i]=m2;else S.moves.unshift(m2);
+    }else if(a[0]==="cai"&&v&&typeof v==="object"){
+      if(v.low!==undefined&&v.low!=="")S.settings.low=+v.low||0;
+      if(v.prefix!==undefined)S.settings.prefix=String(v.prefix||"");
+      const s2=String(v.sizes||"").split(",").map(Number).filter(n=>n>0);
+      if(s2.length)S.settings.sizes=s2;
+    }else if(a[0]==="nhom"){
+      if(v===null){S.groups=S.groups.filter(g=>g.id!==a[1]);continue}
+      let g=S.groups.find(g2=>g2.id===a[1]);
+      if(!g){g={id:a[1],ten:"",items:[]};S.groups.push(g)}
+      g.ten=String(v.ten||"");
+    }else if(a[0]==="mh"){
+      if(v===null){S.groups.forEach(g=>{g.items=g.items.filter(it=>it.sku!==a[1])});continue}
+      const g=S.groups.find(g2=>g2.id===v.gid)||S.groups[0];if(!g)continue;
+      let x=findSku(a[1]);
+      if(!x){const it={id:a[1],sku:a[1],ten:"",img:"",sizes:{}};g.items.push(it);x={g,it}}
+      else if(x.g!==g){x.g.items=x.g.items.filter(i2=>i2!==x.it);g.items.push(x.it)}
+      x.it.ten=String(v.ten||"");
+    }
+  }
+}
+/* Độ sâu của "lá" trong từng nhánh — quyết định cái gì gửi riêng được. */
+const FB_SAU={nhom:2,mh:2,kho:3,dat:3,anh:2,moves:2,cai:1};
+function fbLa(t){
+  const out={};
+  for(const k in t){
+    const sau=FB_SAU[k]||2;
+    (function di(o,p,d){
+      if(d>=sau||o===null||typeof o!=="object"){out[p]=o===undefined?null:o;return}
+      for(const c in o)di(o[c],p+"/"+c,d+1);
+    })(t[k],k,1);
+  }
+  return out;
+}
+/** Những lá đã đổi giữa hai cây; lá bị bỏ đi ghi null để Firebase xoá. */
+function fbKhac(cu,moi){
+  const a=fbLa(cu||{}),b=fbLa(moi||{}),r={};
+  for(const p in b)if(JSON.stringify(a[p])!==JSON.stringify(b[p]))r[p]=b[p];
+  for(const p in a)if(!(p in b))r[p]=null;
+  return r;
+}
+
+let fbT={},fbCu=null,fbES=null,fbDangGui=false,fbHen=null,fbLoi=0,fbSan=false,veT=null;
+const fbNo=()=>fbOn()&&fbCu!==null&&Object.keys(fbKhac(fbCu,fbCay())).length>0;
+
+/** Vẽ lại nhưng giữ nguyên ô đang gõ, không thì đang nhập số bị nhảy con trỏ. */
+function veLai(){
+  clearTimeout(veT);
+  veT=setTimeout(()=>{
+    const el=document.activeElement;
+    const o=el&&el.dataset?el.dataset.o:null;
+    const vt=el&&el.selectionStart;
+    renderAll();
+    if(o){
+      const l=document.querySelector('[data-o="'+o.replace(/"/g,'\\"')+'"]');
+      if(l){l.focus();try{l.setSelectionRange(vt,vt)}catch(e){}}
+    }
+  },180);
+}
+/** Gửi phần đã đổi. Đang gửi dở thì để lượt sau gửi tiếp, không bỏ sót. */
+async function fbDay(){
+  if(!fbOn()||fbDangGui)return;
+  if(fbCu===null)return;                 /* chưa nhận được bản gốc, chờ đã */
+  const moi=fbCay(),d=fbKhac(fbCu,moi),n=Object.keys(d).length;
+  if(!n){setSync("ok","Đã lưu · Firebase");setFb("Mọi thứ đã lên Firebase.");return}
+  fbDangGui=true;setSync("busy");
+  try{
+    const r=await fetch(fbGoc()+".json",{method:"PATCH",
+      headers:{"Content-Type":"application/json"},body:JSON.stringify(d)});
+    if(!r.ok){
+      const t=await r.text().catch(()=>"");
+      throw new Error("Firebase trả về "+r.status+(/Permission denied/i.test(t)
+        ?" — Rules chưa cho ghi vào mã kho này":""));
+    }
+    /* Ghi luôn vào cây mình đang giữ. Thiếu bước này thì gói vọng về sau đó
+       mang cây cũ ra dựng lại và xoá mất chính cái vừa gửi. */
+    for(const p in d)fbDatVao(fbT,p,d[p],false);
+    fbCu=JSON.parse(JSON.stringify(fbT));
+    fbLoi=0;
+    setSync("ok","Đã lưu lên Firebase · "+n+" ô");
+    setFb("Đã lưu "+n+" ô lên Firebase lúc "+new Date().toLocaleTimeString("vi-VN"));
+  }catch(e){
+    fbLoi++;
+    setSync("err",String(e.message||e)+" — số bạn gõ vẫn còn, sẽ tự gửi lại.");
+    setTimeout(fbDay,Math.min(30000,2000*fbLoi));
+  }finally{
+    fbDangGui=false;
+    if(fbNo())fbSom();                   /* trong lúc gửi có gõ thêm */
+  }
+}
+function fbSom(){clearTimeout(fbHen);fbHen=setTimeout(fbDay,400)}
+
+/** Đặt một gói tin của Firebase vào đúng chỗ trong cây. */
+function fbDatVao(t,p,v,ghep){
+  const a=String(p||"").split("/").filter(Boolean);
+  if(ghep){for(const k in v)fbDatVao(t,a.concat(k.split("/").filter(Boolean)).join("/"),v[k],false);return}
+  if(!a.length){for(const k in t)delete t[k];if(v&&typeof v==="object")Object.assign(t,v);return}
+  let o=t;
+  for(let i=0;i<a.length-1;i++){
+    if(typeof o[a[i]]!=="object"||o[a[i]]===null)o[a[i]]={};
+    o=o[a[i]];
+  }
+  const k=a[a.length-1];
+  if(v===null||v===undefined)delete o[k];else o[k]=v;
+}
+function fbNhan(e,ghep){
+  let j;try{j=JSON.parse(e.data)}catch(err){return}
+  if(!j||typeof j.path!=="string")return;
+  /* Chụp lại phần mình gõ mà chưa gửi được, lát nữa đắp lại cho khỏi mất. */
+  const chuaGui=fbCu===null?{}:fbKhac(fbCu,fbCay());
+  const truoc=JSON.stringify(fbT);
+  fbDatVao(fbT,j.path,j.data,ghep);
+  if(!fbSan){
+    fbSan=true;
+    if(!fbT.mh||!Object.keys(fbT.mh).length){
+      /* Firebase còn trống: lấy dữ liệu máy này làm gốc */
+      fbCu={};setFb("Firebase đang trống — đang đưa dữ liệu máy này lên làm gốc.");
+      fbSom();return;
+    }
+  }
+  else if(truoc===JSON.stringify(fbT))return;   /* tiếng vọng của chính mình, không đổi gì */
+  fbVeS(fbT);
+  /* Ghi lại "máy chủ đang giữ cái gì" bằng đúng cách nhìn của fbCay. Nếu chép
+     thẳng cây thì những ô size mới đẻ ra bằng 0 sẽ bị hiểu nhầm là mình vừa
+     sửa, rồi máy này đẩy số 0 đè lên số thật của máy kia. */
+  fbCu=fbCay();
+  if(Object.keys(chuaGui).length){fbDatLa(chuaGui);fbSom()}
+  saveNow();veLai();
+  setSync("ok","Firebase · vừa nhận bản mới");
+}
+/** Mở kênh nghe. Firebase tự đẩy về, không phải ngồi dò. */
+function fbNghe(){
+  if(!fbOn())return;
+  if(fbES){try{fbES.close()}catch(e){}fbES=null}
+  fbT={};fbCu=null;fbSan=false;
+  let es;
+  try{es=new EventSource(fbGoc()+".json")}
+  catch(e){setSync("err","không mở được kênh Firebase — kiểm tra địa chỉ");return}
+  fbES=es;
+  setSync("busy","Đang nối Firebase…");
+  es.addEventListener("put",ev=>fbNhan(ev,false));
+  es.addEventListener("patch",ev=>fbNhan(ev,true));
+  es.addEventListener("auth_revoked",()=>setSync("err","Firebase từ chối — xem lại Rules và mã kho"));
+  es.addEventListener("cancel",()=>setSync("err","Firebase ngắt kênh — xem lại Rules và mã kho"));
+  es.onopen=()=>{fbLoi=0;setFb("Đang nối thẳng Firebase.")};
+  es.onerror=()=>{if(es===fbES&&es.readyState!==1)setSync("err","mất kết nối Firebase — đang nối lại…")};
+}
+function fbBatDau(){
+  if(!fbOn())return false;
+  fbNghe();
+  setInterval(()=>{
+    if(!fbOn()||document.hidden)return;
+    if(fbES&&fbES.readyState===2)fbNghe();     /* điện thoại ngủ làm rớt kênh */
+    if(fbNo())fbDay();
+  },15000);
+  document.addEventListener("visibilitychange",()=>{
+    if(!fbOn())return;
+    if(document.hidden){saveNow();if(fbNo())fbDay()}
+    else{if(fbES&&fbES.readyState===2)fbNghe();if(fbNo())fbDay()}
+  });
+  window.addEventListener("online",()=>{if(fbOn()){if(fbES&&fbES.readyState===2)fbNghe();if(fbNo())fbDay()}});
+  return true;
+}
+/** Ghi đè: lấy toàn bộ dữ liệu máy này làm gốc trên Firebase. */
+async function fbDuaLen(){
+  if(!fbOn())return;
+  const moi=fbCay();
+  setSync("busy");setFb("Đang đưa toàn bộ dữ liệu lên…");
+  try{
+    const r=await fetch(fbGoc()+".json",{method:"PUT",
+      headers:{"Content-Type":"application/json"},body:JSON.stringify(moi)});
+    if(!r.ok)throw new Error("Firebase trả về "+r.status);
+    fbT=JSON.parse(JSON.stringify(moi));fbCu=JSON.parse(JSON.stringify(moi));fbSan=true;
+    setSync("ok","Đã đưa toàn bộ lên Firebase");setFb("Xong. Firebase giờ giống hệt máy này.");
+  }catch(e){setSync("err",String(e.message||e));setFb("Không đưa lên được: "+(e.message||e))}
+}
+async function fbLayVe(){
+  if(!fbOn())return;
+  setSync("busy");setFb("Đang lấy về…");
+  try{
+    const r=await fetch(fbGoc()+".json?t="+Date.now(),{cache:"no-store"});
+    if(!r.ok)throw new Error("Firebase trả về "+r.status);
+    const t=await r.json();
+    if(!t||!t.mh){setFb("Trên Firebase chưa có gì.");setSync("ok");return}
+    fbT=t;fbSan=true;
+    fbVeS(fbT);fbCu=fbCay();saveNow();renderAll();
+    setSync("ok","Đã lấy về từ Firebase");setFb("Đã lấy về xong.");
+  }catch(e){setSync("err",String(e.message||e));setFb("Không lấy về được: "+(e.message||e))}
+}
+
 /* ═══════════ đồng bộ Google Sheets qua Apps Script ═══════════
    Máy vẫn làm việc trên localStorage cho nhanh; Sheets là kho chung.
    Mỗi lần ghi lên, máy chủ tăng số phiên bản. Nếu số phiên bản trên Sheets
@@ -710,7 +1012,8 @@ const huyToday=()=>S.moves.filter(m=>m.t==="out"&&m.huy&&m.huy.d===todayKey()).r
    Còn nợ = soLanSua > daDayToi. Còn nợ thì tuyệt đối không cho tải đè lên. */
 let syncState="off",syncT=null,syncBusy=false,soLanSua=0,daDayToi=0,doiDay=false,
     dangKetXung=false,soLanGop=0;
-const syncOn=()=>!!(S.settings.syncUrl||"").trim();
+const sheetsCo=()=>!!(S.settings.syncUrl||"").trim();
+const syncOn=()=>!fbOn()&&sheetsCo();   /* có Firebase thì Sheets nghỉ, tránh hai nơi cùng ghi */
 const conNo=()=>syncOn()&&soLanSua>daDayToi;
 
 function setSync(st,msg){
@@ -984,8 +1287,9 @@ function hideConflict(){dangKetXung=false;const b=document.getElementById("confl
    Gói vào phần sau dấu # của link để máy mới mở một cái là xong.
    Dùng # chứ không phải ? để chuỗi này không bị gửi lên máy chủ, không lọt vào log. */
 function taoLinkCaiSan(){
-  if(!syncOn())return "";
-  const cfg={u:S.settings.syncUrl,t:S.settings.syncToken||""};
+  if(!syncOn()&&!fbOn())return "";
+  const cfg={u:S.settings.syncUrl||"",t:S.settings.syncToken||"",
+             fu:S.settings.fbUrl||"",fm:S.settings.fbMa||""};
   const b64=btoa(unescape(encodeURIComponent(JSON.stringify(cfg))));
   return location.origin+location.pathname+"#cfg="+b64;
 }
@@ -996,8 +1300,13 @@ async function napCauHinh(){
     const r=await fetch("config.json?t="+Date.now(),{cache:"no-store"});
     if(!r.ok)return false;
     const c=await r.json();
-    if(!c||!c.u)return false;
-    if(S.settings.syncUrl!==c.u||S.settings.syncToken!==(c.t||"")){
+    if(!c||(!c.u&&!c.fu))return false;
+    if(c.fu&&(S.settings.fbUrl!==c.fu||S.settings.fbMa!==(c.fm||""))){
+      S.settings.fbUrl=String(c.fu);
+      S.settings.fbMa=String(c.fm||"kho");
+      save({local:true});
+    }
+    if(c.u&&(S.settings.syncUrl!==c.u||S.settings.syncToken!==(c.t||""))){
       S.settings.syncUrl=String(c.u);
       S.settings.syncToken=String(c.t||"");
       save({local:true});
@@ -1013,6 +1322,10 @@ function docLinkCaiSan(){
   let ok=false;
   try{
     const c=JSON.parse(decodeURIComponent(escape(atob(m[1]))));
+    if(c&&c.fu){
+      S.settings.fbUrl=String(c.fu);S.settings.fbMa=String(c.fm||"kho");
+      save({local:true});ok=true;
+    }
     if(c&&c.u){
       S.settings.syncUrl=String(c.u);
       S.settings.syncToken=String(c.t||"");
@@ -1932,11 +2245,19 @@ document.addEventListener("click",async e=>{
   if(id==="imFile"){pickImageFile();return}
   if(id==="imDel"){setImg("");closeImg();toast("Đã xoá ảnh");return}
   if(id==="imClose"){closeImg();return}
+  if(id==="fbDua"){
+    if(confirm("Đưa toàn bộ dữ liệu máy này lên Firebase, ghi đè cái đang có trên đó?"))fbDuaLen();
+    return;
+  }
+  if(id==="fbLay"){
+    if(confirm("Lấy lại từ Firebase, bỏ thay đổi chưa gửi ở máy này?"))fbLayVe();
+    return;
+  }
   if(id==="syncPull"||id==="cfPull"){syncPull(false);return}
   if(id==="syncPush"){syncPush(false);return}
   if(id==="syncLink"){
     const l=taoLinkCaiSan();
-    if(!l){toast("Chưa có địa chỉ Sheets để tạo link");return}
+    if(!l){toast("Chưa nối kho chung nên chưa tạo được link");return}
     const xong=()=>setSync(syncState,"Đã copy link. Gửi sang máy kia rồi mở là tự nối, không phải gõ gì.");
     if(navigator.clipboard)navigator.clipboard.writeText(l).then(xong,()=>prompt("Copy link này:",l));
     else prompt("Copy link này:",l);
@@ -1948,7 +2269,8 @@ document.addEventListener("click",async e=>{
     return;
   }
   if(id==="syncChip"){
-    if(!syncOn()){toast("Chưa đặt địa chỉ Google Sheets — kéo xuống mục Cài đặt");return}
+    if(fbOn()){if(fbNo())fbDay();else fbNghe();return}
+    if(!syncOn()){toast("Chưa nối kho chung — kéo xuống mục Cài đặt");return}
     syncPull(false);return;
   }
   if(id==="huyFind"){huyFind();return}
@@ -2010,11 +2332,12 @@ document.addEventListener("click",async e=>{
   if(id==="expJson"){dl(`sao-luu-kho-${todayKey()}.json`,JSON.stringify(S),"application/json");toast("Đã tải file sao lưu");return}
   if(id==="impJson"){document.getElementById("jsonIn").click();return}
   if(id==="reset"){
-    const canhbao=syncOn()
-      ? "Xoá toàn bộ dữ liệu và quay về bảng F50 Yamal ban đầu?\n\nĐANG NỐI GOOGLE SHEETS: bảng trên Sheets cũng sẽ bị ghi đè, các máy khác mất theo. Nên tải file sao lưu trước."
+    const canhbao=(fbOn()||syncOn())
+      ? "Xoá toàn bộ dữ liệu và quay về bảng F50 Yamal ban đầu?\n\nĐANG NỐI KHO CHUNG: dữ liệu trên đó cũng bị ghi đè, các máy khác mất theo. Nên tải file sao lưu trước."
       : "Xoá toàn bộ dữ liệu và quay về bảng F50 Yamal ban đầu?";
     if(confirm(canhbao)){
-      const keep={syncUrl:S.settings.syncUrl,syncToken:S.settings.syncToken},v=S.ver;
+      const keep={syncUrl:S.settings.syncUrl,syncToken:S.settings.syncToken,
+                  fbUrl:S.settings.fbUrl,fbMa:S.settings.fbMa},v=S.ver;
       S=seed();Object.assign(S.settings,keep);S.ver=v;
       save();renderAll();toast("Đã làm lại từ đầu")}
     return;
@@ -2061,7 +2384,13 @@ document.addEventListener("input",e=>{
   if(t.id==="syncUrl"){S.settings.syncUrl=t.value.trim();save({local:true});
     setSync(syncOn()?"ok":"off","");return}
   if(t.id==="syncToken"){S.settings.syncToken=t.value.trim();save({local:true});return}
+  if(t.id==="fbUrl"||t.id==="fbMa"){
+    S.settings[t.id]=t.value.trim();save({local:true});
+    clearTimeout(fbNoiT);fbNoiT=setTimeout(()=>{if(fbOn())fbNghe();else setSync("off","")},900);
+    return;
+  }
 });
+let fbNoiT=null;
 document.addEventListener("change",e=>{
   const t=e.target;
   if(t.dataset&&t.dataset.map){S.mapHienTai[t.dataset.map]=+t.value;renderMap();return}
@@ -2104,9 +2433,14 @@ function renderAll(){
   document.getElementById("pfx").value=S.settings.prefix;
   document.getElementById("syncUrl").value=S.settings.syncUrl||"";
   document.getElementById("syncToken").value=S.settings.syncToken||"";
+  const oU=document.getElementById("fbUrl"),oM=document.getElementById("fbMa");
+  if(oU&&document.activeElement!==oU)oU.value=S.settings.fbUrl||"";
+  if(oM&&document.activeElement!==oM)oM.value=S.settings.fbMa||"";
   const cn=document.getElementById("cfgNote");
-  if(cn&&cfgTuMayChu)cn.innerHTML="Cấu hình do máy chủ cấp, nên <b>mọi máy mở địa chỉ này đều nối sẵn</b>, "
-    +"không phải nhập gì. Muốn đổi thì sửa biến SHEETS_URL và SHEETS_TOKEN trong Cloudflare.";
+  if(cn&&cfgTuMayChu)cn.innerHTML=fbOn()
+    ? "Đang chạy bằng Firebase nên phần Google Sheets này <b>đang nghỉ</b>. Xoá hai ô Firebase ở trên thì nó chạy lại."
+    : "Cấu hình do máy chủ cấp, nên <b>mọi máy mở địa chỉ này đều nối sẵn</b>, "
+      +"không phải nhập gì. Muốn đổi thì sửa biến SHEETS_URL và SHEETS_TOKEN trong Cloudflare.";
   renderBoard();renderLog();
 }
 (function(){
@@ -2120,12 +2454,16 @@ function renderAll(){
   setSync("busy","Đang lấy cấu hình…");
   napCauHinh().then(()=>{
     renderAll();
-    if(syncOn()){
+    if(fbOn()){
+      setSync("busy","Đang nối Firebase…");
+      fbBatDau();
+      if(tuLink)toast("Đã nhận cấu hình từ link — đang nối Firebase");
+    }else if(syncOn()){
       setSync("busy","Đang tải từ Sheets…");
       syncPull(true);
       if(tuLink)toast("Đã nhận cấu hình từ link — đang tải dữ liệu về");
-    }else setSync("off","Chưa nối Sheets. Máy chủ chưa có biến SHEETS_URL và SHEETS_TOKEN — "
-      +"đặt trong Cloudflare (Settings → Variables and Secrets), hoặc dán tay vào hai ô trên.");
+    }else setSync("off","Chưa nối kho chung. Đặt biến FIREBASE_URL và FIREBASE_MA trong Cloudflare "
+      +"(Settings → Variables and Secrets), hoặc dán tay vào hai ô Firebase trong Cài đặt.");
   });
 })();
 </script>
