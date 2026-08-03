@@ -349,7 +349,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="2.9", APP_TEN="phiếu gọn lại, bỏ size trống, dễ dò từng dòng";
+const APP_VER="3.0", APP_TEN="không mất số đang gõ, hai máy tự thấy nhau";
 const uid=()=>Math.random().toString(36).slice(2,9);
 const todayKey=()=>new Date().toISOString().slice(0,10);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -670,14 +670,20 @@ function load(){
   }catch(e){}
   return seed();
 }
-let saveT=null;
+let saveT=null,suaKhac=false;
+function saveNow(){
+  clearTimeout(saveT);saveT=null;
+  try{localStorage.setItem(KEY,JSON.stringify(S))}
+  catch(e){toast("Không lưu được — bộ nhớ trình duyệt đã đầy. Hãy xoá bớt ảnh sản phẩm.")}
+}
 function save(opt){
   clearTimeout(saveT);
-  saveT=setTimeout(()=>{
-    try{localStorage.setItem(KEY,JSON.stringify(S))}
-    catch(e){toast("Không lưu được — bộ nhớ trình duyệt đã đầy. Hãy xoá bớt ảnh sản phẩm.")}
-  },120);
-  if(!(opt&&opt.local))syncSoon();
+  saveT=setTimeout(saveNow,120);
+  if(opt&&opt.local)return;
+  /* {dat:true} = chỉ sửa số đang đặt. Loại này gộp được với máy khác nên khỏi phải hỏi;
+     mọi thứ khác (tồn, mã hàng, nhật ký) đụng nhau thì vẫn dừng lại hỏi cho chắc. */
+  if(!(opt&&opt.dat))suaKhac=true;
+  syncSoon();
 }
 
 const SZ=()=>S.settings.sizes;
@@ -696,17 +702,25 @@ const huyToday=()=>S.moves.filter(m=>m.t==="out"&&m.huy&&m.huy.d===todayKey()).r
    Máy vẫn làm việc trên localStorage cho nhanh; Sheets là kho chung.
    Mỗi lần ghi lên, máy chủ tăng số phiên bản. Nếu số phiên bản trên Sheets
    khác số mình đang giữ nghĩa là máy khác vừa sửa — dừng lại hỏi, không ghi đè. */
-let syncState="off",syncT=null,syncBusy=false;
+/* Ba biến giữ cho không mất chữ đang gõ:
+   syncBusy  — đang có một lượt gọi máy chủ chạy dở.
+   soLanSua  — đếm số lần dữ liệu đổi; chụp lại trước khi đẩy để biết
+               trong lúc đẩy có ai gõ thêm không.
+   daDayToi  — số đếm của lần đẩy thành công gần nhất.
+   Còn nợ = soLanSua > daDayToi. Còn nợ thì tuyệt đối không cho tải đè lên. */
+let syncState="off",syncT=null,syncBusy=false,soLanSua=0,daDayToi=0,doiDay=false,
+    dangKetXung=false,soLanGop=0;
 const syncOn=()=>!!(S.settings.syncUrl||"").trim();
+const conNo=()=>syncOn()&&soLanSua>daDayToi;
 
 function setSync(st,msg){
   syncState=st;
   const c=document.getElementById("syncChip");
   if(!c)return;
   const txt={off:"Chưa nối Sheets",ok:"Đã đồng bộ",busy:"Đang đồng bộ…",
-             err:"Lỗi đồng bộ",conflict:"Cần xử lý"};
+             err:"Lỗi đồng bộ",conflict:"Cần xử lý",cho:"Chưa lưu xong"};
   c.textContent=txt[st]||st;
-  c.className="btn sm noprint"+(st==="ok"?" ok":st==="err"||st==="conflict"?" err":st==="busy"?" busy":"");
+  c.className="btn sm noprint"+(st==="ok"?" ok":st==="err"||st==="conflict"?" err":st==="busy"||st==="cho"?" busy":"");
   const m=document.getElementById("syncMsg");
   if(m&&msg!==undefined)m.textContent=msg;
 }
@@ -807,6 +821,41 @@ function unpackState(d){
   return {groups,moves,sizes,cai:d.cai||{},draft:draftTuSku(dat,groups)};
 }
 
+/** Đưa dữ liệu tải về vào máy. Chỉ gọi khi máy KHÔNG còn gì nợ chưa đẩy. */
+function nhanVe(j,u){
+  S.groups=u.groups;S.moves=u.moves;S.settings.sizes=u.sizes;
+  if(u.cai.low!==undefined&&u.cai.low!=="")S.settings.low=+u.cai.low||0;
+  if(u.cai.prefix!==undefined)S.settings.prefix=String(u.cai.prefix||"");
+  S.ver=j.ver||0;S.draft=u.draft||{};
+  daDayToi=soLanSua;suaKhac=false;    /* đã lấy bản của Sheets: không còn nợ gì */
+  saveNow();renderAll();hideConflict();
+}
+/** Máy khác vừa ghi trong lúc mình chỉ gõ số đặt. Số đặt là từng ô riêng theo
+    mã hàng + size nên gộp được: lấy bản của họ về rồi đắp số của mình lên,
+    không ai mất gì và không phải dừng lại hỏi. */
+async function gopSoDat(){
+  const cua={};                       // số mình đang gõ, khoá theo SKU (mã nội bộ sẽ sinh lại)
+  for(const pid in S.draft){
+    const x=items().find(v=>v.it.id===pid);if(!x)continue;
+    for(const z in S.draft[pid]){
+      const q=+S.draft[pid][z]||0;
+      if(q>0)(cua[x.it.sku]=cua[x.it.sku]||{})[z]=q;
+    }
+  }
+  const j=await callSync({action:"pull"});
+  const u=unpackState(j.data||{});
+  if(!u.groups.length)return false;
+  nhanVe(j,u);
+  for(const sku in cua){
+    let it=null;
+    S.groups.some(g=>{const f=g.items.find(v=>v.sku===sku);if(f){it=f;return true}return false});
+    if(!it)continue;
+    S.draft[it.id]=S.draft[it.id]||{};
+    for(const z in cua[sku])S.draft[it.id][z]=cua[sku][z];   // số mình gõ được ưu tiên
+  }
+  saveNow();renderAll();
+  return true;
+}
 async function syncPull(quiet){
   if(!syncOn()||syncBusy)return;
   syncBusy=true;
@@ -816,64 +865,111 @@ async function syncPull(quiet){
     const u=unpackState(j.data||{});
     if(!u.groups.length&&!u.moves.length){
       /* Sheets còn trống: coi như lần đầu, đẩy dữ liệu máy này lên làm gốc */
-      S.ver=j.ver||0;save({local:true});syncBusy=false;await syncPush(true);
+      S.ver=j.ver||0;saveNow();syncBusy=false;await syncPush(true);
       setSync("ok","Sheets đang trống — đã đưa dữ liệu máy này lên làm gốc.");
       return;
     }
-    S.groups=u.groups;S.moves=u.moves;
-    S.settings.sizes=u.sizes;
-    if(u.cai.low!==undefined&&u.cai.low!=="")S.settings.low=+u.cai.low||0;
-    if(u.cai.prefix!==undefined)S.settings.prefix=String(u.cai.prefix||"");
-    S.ver=j.ver||0;S.draft=u.draft||{};
-    save({local:true});renderAll();hideConflict();
+    nhanVe(j,u);
     setSync("ok",`Đã tải về ${u.groups.reduce((a,g)=>a+g.items.length,0)} mã hàng · bản ${S.ver}`);
   }catch(e){setSync("err",String(e.message||e))}
-  finally{syncBusy=false}
+  finally{syncBusy=false;if(conNo())syncPush(false)}
 }
+/** Đẩy lên Sheets. Không bao giờ bỏ rơi một thay đổi nào:
+    đang bận thì hẹn đẩy lại ngay sau khi lượt hiện tại xong. */
 async function syncPush(force){
-  if(!syncOn()||syncBusy)return;
+  if(!syncOn())return;
+  if(dangKetXung&&!force)return;             // đang chờ người chọn giữ bên nào
+  if(syncBusy){doiDay=true;return}          // xếp hàng chờ, KHÔNG vứt đi
+  clearTimeout(syncT);syncT=null;
   syncBusy=true;setSync("busy");
+  const moc=soLanSua;                        // chụp lại: gõ thêm trong lúc đẩy sẽ vượt số này
+  let dung=false;                            // dừng hẳn: hỏng mạng hoặc phải hỏi người dùng
   try{
     const j=await callSync({action:"push",ver:force?-1:(S.ver||0),data:packState()});
     if(j.conflict){
-      setSync("conflict");showConflict(j.ver);
+      /* Chỉ gõ số đặt thì gộp thẳng, khỏi làm phiền. Gộp mãi không xong (máy kia
+         ghi liên tục) thì mới dừng lại hỏi, chứ đẩy lại vô hạn sẽ quay vòng. */
+      if(!suaKhac&&soLanGop<3&&await gopSoDat()){
+        soLanGop++;soLanSua++;               // ghi nợ lại để lượt sau đẩy bản đã gộp
+        setSync("busy","Máy khác vừa sửa — đã gộp số bạn gõ vào, đang lưu lại…");
+        return;
+      }
+      dung=true;setSync("conflict");showConflict(j.ver);
       return;
     }
-    S.ver=j.ver;save({local:true});hideConflict();
-    setSync("ok","Đã lưu lên Sheets · bản "+S.ver);
-  }catch(e){setSync("err",String(e.message||e))}
-  finally{syncBusy=false}
+    S.ver=j.ver;
+    if(moc>daDayToi)daDayToi=moc;            // chỉ xoá nợ tới đúng lúc đã chụp
+    if(!conNo()){suaKhac=false;soLanGop=0}
+    saveNow();hideConflict();
+    setSync(conNo()?"cho":"ok","Đã lưu lên Sheets · bản "+S.ver);
+    force=false;                             // đã ghi đè xong, lượt sau về bình thường
+  }catch(e){
+    dung=true;                               // hỏng mạng thì chờ rồi thử lại, không mất
+    setSync("err",String(e.message||e)+" — sẽ tự thử lại, số bạn gõ vẫn còn.");
+    setTimeout(()=>{if(conNo()&&!syncBusy)syncPush(force)},5000);
+  }
+  finally{
+    syncBusy=false;
+    const nua=doiDay||conNo();doiDay=false;
+    if(!dung&&nua)setTimeout(()=>syncPush(force),0);
+  }
 }
 /** Quay lại tab thì tải bản mới nhất, để máy mở sẵn không nhìn nhầm số cũ. */
 let lastPull=0;
 async function syncRefresh(){
   if(!syncOn()||syncBusy||document.hidden)return;
+  /* Còn chữ mình gõ chưa đẩy lên thì ĐẨY TRƯỚC, tuyệt đối không tải đè —
+     đây chính là chỗ trước kia làm mất số đang đặt khi chuyển máy/chuyển app. */
+  if(conNo()){syncPush(false);return}
   if(Date.now()-lastPull<8000)return;
   lastPull=Date.now();
   try{
     const j=await callSync({action:"pull"});
     if((j.ver||0)===(S.ver||0))return;          // chưa ai sửa, khỏi động vào
+    if(conNo()){syncPush(false);return}         // vừa gõ thêm trong lúc chờ trả lời
     /* số đang đặt nay cũng đồng bộ nên không cần chặn nữa; chỉ còn bảng đối chiếu
        PDF là việc dở dang thật sự chưa đẩy lên, gặp thì dừng lại hỏi */
     if(pending){setSync("conflict");showConflict(j.ver);return}
     const u=unpackState(j.data||{});
     if(!u.groups.length)return;
-    S.groups=u.groups;S.moves=u.moves;S.settings.sizes=u.sizes;S.draft=u.draft||{};
-    S.ver=j.ver||0;save({local:true});renderAll();hideConflict();
+    nhanVe(j,u);
     setSync("ok","Vừa tải bản mới từ Sheets · bản "+S.ver);
     toast("Máy khác vừa cập nhật — đã tải bản mới về");
   }catch(e){/* mất mạng thì thôi, giữ nguyên dữ liệu đang có */}
 }
-document.addEventListener("visibilitychange",()=>{if(!document.hidden)syncRefresh()});
+document.addEventListener("visibilitychange",()=>{
+  if(document.hidden){
+    /* Tắt màn hình / chuyển app: điện thoại đóng băng bộ hẹn giờ, chờ nữa là mất.
+       Ghi thẳng vào máy rồi đẩy lên luôn, không đợi 1,8 giây. */
+    saveNow();if(conNo())syncPush(false);
+  }else syncRefresh();
+});
+window.addEventListener("pagehide",()=>{saveNow()});
 window.addEventListener("focus",syncRefresh);
+window.addEventListener("online",()=>{if(conNo())syncPush(false)});
+window.addEventListener("beforeunload",e=>{
+  if(!conNo())return;
+  e.preventDefault();e.returnValue="";      // còn số chưa lưu lên Sheets
+});
+/* Nhịp tự động 15 giây: còn nợ thì đẩy nốt, không nợ thì dò xem máy khác có sửa gì
+   không. Trước đây chỉ dò lúc chuyển tab, nên ngồi chờ trước máy tính sẽ không
+   thấy gì cho tới khi bấm ra bấm vào. */
+setInterval(()=>{
+  if(document.hidden||!syncOn()||syncBusy)return;
+  if(conNo()){syncPush(false);return}
+  syncRefresh();
+},15000);
 
 /** Gọi sau mỗi thay đổi; gom lại để không bắn liên tục khi đang gõ. */
 function syncSoon(){
   if(!syncOn())return;
+  soLanSua++;                                // ghi nợ ngay, chỉ xoá khi Sheets nhận xong
+  if(syncState!=="busy")setSync("cho","Đang giữ thay đổi, sắp lưu lên Sheets…");
   clearTimeout(syncT);
-  syncT=setTimeout(()=>syncPush(false),1800);
+  syncT=setTimeout(()=>syncPush(false),1200);
 }
 function showConflict(ver){
+  dangKetXung=true;
   const box=document.getElementById("conflict");
   box.hidden=false;
   box.innerHTML=`<b>Máy khác vừa sửa dữ liệu trên Sheets (bản ${ver}).</b>
@@ -881,7 +977,7 @@ function showConflict(ver){
     <button class="btn sm" id="cfPull">Lấy bản trên Sheets, bỏ thay đổi ở máy này</button>
     <button class="btn sm warn" id="cfPush">Ghi đè Sheets bằng dữ liệu máy này</button>`;
 }
-function hideConflict(){const b=document.getElementById("conflict");b.hidden=true;b.innerHTML=""}
+function hideConflict(){dangKetXung=false;const b=document.getElementById("conflict");b.hidden=true;b.innerHTML=""}
 
 /* ═══════════ chuyển cấu hình sang máy khác ═══════════
    Địa chỉ Sheets và mã bảo vệ nằm trong localStorage nên trình duyệt mới là trống.
@@ -1941,7 +2037,7 @@ document.addEventListener("input",e=>{
     S.draft[pid]=S.draft[pid]||{};
     const v=Math.max(0,+t.value||0);
     if(v)S.draft[pid][s]=v;else delete S.draft[pid][s];
-    save();
+    save({dat:true});
     /* cập nhật thẳng ô tổng của dòng và của nhóm, không vẽ lại cả bảng để khỏi mất chỗ đang gõ */
     const x=items().find(v2=>v2.it.id===pid);
     if(x){
