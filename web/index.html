@@ -184,6 +184,9 @@ table.list tfoot td{background:var(--sunk);font-weight:640}
 #syncChip.ok{border-color:var(--act);color:var(--act)}
 #syncChip.err{border-color:var(--lock);color:var(--lock)}
 #syncChip.busy{opacity:.6}
+#logFix{background:var(--low-soft,#FFF4E0);border:1px solid var(--low);border-radius:10px;
+  padding:12px 14px;margin:0 0 14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+#logFix[hidden]{display:none}
 table.list tr.ngay td{background:var(--sunk);font-weight:680;cursor:pointer;white-space:normal}
 table.list tr.ngay .dongngay{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:baseline;
   justify-content:space-between;position:sticky;left:0;max-width:calc(100vw - 76px)}
@@ -304,6 +307,7 @@ table.list tr.huy code{text-decoration:line-through}
       style="max-width:340px" autocomplete="off">
     <span class="note" id="logQInfo"></span>
   </div>
+  <div id="logFix" hidden></div>
   <div id="logBox"></div>
 </section>
 
@@ -381,9 +385,41 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="3.6", APP_TEN="nhật ký gom theo ngày, bấm xem chi tiết";
+const APP_VER="3.7", APP_TEN="ngày tính theo giờ Việt Nam";
 const uid=()=>Math.random().toString(36).slice(2,9);
-const todayKey=()=>new Date().toISOString().slice(0,10);
+/* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
+   Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
+const khoaNgay=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")
+                 +"-"+String(d.getDate()).padStart(2,"0");
+const todayKey=()=>khoaNgay(new Date());
+/** Đếm / sửa mấy lượt đã bị ghi sai ngày hồi còn dùng giờ UTC.
+    Hồi đó: ngày lấy giờ UTC, còn giờ lấy giờ máy — nên cứ dò theo giờ là ra. */
+function lechNgay(sua){
+  const lech=-new Date().getTimezoneOffset();        /* phút; Việt Nam = +420 */
+  if(!lech)return 0;
+  const phut=h=>{const m=/^(\d{1,2}):(\d{2})$/.exec(h||"");return m?+m[1]*60+ +m[2]:null};
+  const doi=(ngay,gio)=>{
+    const p=phut(gio);if(p===null)return null;
+    let b=0;
+    if(lech>0&&p<lech)b=1;
+    else if(lech<0&&p>=1440+lech)b=-1;
+    if(!b)return null;
+    const t=new Date(ngay+"T00:00:00");
+    if(isNaN(t))return null;
+    t.setDate(t.getDate()+b);
+    return khoaNgay(t);
+  };
+  let n=0;
+  S.moves.forEach(m=>{
+    const d1=doi(m.d,m.h);
+    if(d1){n++;if(sua)m.d=d1}
+    if(m.huy){
+      const d2=doi(m.huy.d,m.huy.h);
+      if(d2){n++;if(sua)m.huy.d=d2}
+    }
+  });
+  return n;
+}
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* ═══════════ đọc PDF phiếu gửi — chỉ dùng API sẵn có của trình duyệt ═══════════ */
@@ -720,7 +756,7 @@ function seed(){
       mk("ij-f50tf-t","Tím TF",{42:5},[40,41]),
       mk("ij-f50tf-c","Cam TF",{},[])
     ]}],
-    moves:[],draft:{},ver:0,settings:Object.assign({},DEFAULTS)
+    moves:[],draft:{},ver:0,daSuaGio:1,settings:Object.assign({},DEFAULTS)
   };
 }
 let S=load();
@@ -811,7 +847,8 @@ function fbCay(){
   S.moves.forEach(m=>{t.moves[m.id]={d:m.d||"",h:m.h||"",t:m.t||"out",sku:m.sku||"",
     size:+m.size||0,q:+m.q||0,track:m.track||"",order:m.order||"",note:m.note||"",
     digits:m.digits||"",huyD:m.huy?m.huy.d:"",huyH:m.huy?m.huy.h:""}});
-  t.cai={low:S.settings.low,prefix:S.settings.prefix||"",sizes:SZ().join(",")};
+  t.cai={low:S.settings.low,prefix:S.settings.prefix||"",sizes:SZ().join(","),
+         suagio:S.daSuaGio?1:0};
   return t;
 }
 const fbVeMove=(id,v)=>{
@@ -829,6 +866,7 @@ function fbVeS(t){
   if(sz.length)S.settings.sizes=sz;
   if(cai.low!==undefined&&cai.low!=="")S.settings.low=+cai.low||0;
   if(cai.prefix!==undefined)S.settings.prefix=String(cai.prefix||"");
+  if(+cai.suagio)S.daSuaGio=1;
   const gs=Object.keys(nhom).sort((a,b)=>(+nhom[a].tt||0)-(+nhom[b].tt||0))
     .map(id=>({id,ten:String(nhom[id].ten||""),items:[]}));
   const theo={};gs.forEach(g=>theo[g.id]=g);
@@ -874,6 +912,7 @@ function fbDatLa(m){
       if(v.prefix!==undefined)S.settings.prefix=String(v.prefix||"");
       const s2=String(v.sizes||"").split(",").map(Number).filter(n=>n>0);
       if(s2.length)S.settings.sizes=s2;
+      if(+v.suagio)S.daSuaGio=1;
     }else if(a[0]==="nhom"){
       if(v===null){S.groups=S.groups.filter(g=>g.id!==a[1]);continue}
       let g=S.groups.find(g2=>g2.id===a[1]);
@@ -1137,7 +1176,8 @@ function packState(){
     }
   }
   return {sizes,kho,moves,anh,
-    cai:{low:S.settings.low,prefix:S.settings.prefix,dathang:JSON.stringify(dat)}};
+    cai:{low:S.settings.low,prefix:S.settings.prefix,dathang:JSON.stringify(dat),
+         suagio:S.daSuaGio?1:0}};
 }
 /** Đổi danh sách số đặt (theo mã SKU) về dạng khoá theo mã nội bộ mà giao diện dùng. */
 function draftTuSku(dat,groups){
@@ -1186,6 +1226,7 @@ function nhanVe(j,u){
   S.groups=u.groups;S.moves=u.moves;S.settings.sizes=u.sizes;
   if(u.cai.low!==undefined&&u.cai.low!=="")S.settings.low=+u.cai.low||0;
   if(u.cai.prefix!==undefined)S.settings.prefix=String(u.cai.prefix||"");
+  if(+u.cai.suagio)S.daSuaGio=1;
   S.ver=j.ver||0;S.draft=u.draft||{};
   daDayToi=soLanSua;suaKhac=false;    /* đã lấy bản của Sheets: không còn nợ gì */
   saveNow();renderAll();hideConflict();
@@ -2266,6 +2307,15 @@ function huyUndo(id){
 let logMoNgay=null,logMoNhom={},logQ="";
 function renderLog(){
   const box=document.getElementById("logBox");
+  const fix=document.getElementById("logFix");
+  if(fix){
+    const n=S.daSuaGio?0:lechNgay(false);
+    fix.hidden=!n;
+    if(n)fix.innerHTML=`<b>${n} lượt đang bị ghi lùi một ngày.</b>
+      <span class="note">Bản cũ lấy ngày theo giờ quốc tế, nên việc làm trước 7 giờ sáng
+      bị dồn sang hôm trước. Số tồn không ảnh hưởng, chỉ sai chỗ xếp ngày.</span>
+      <button class="btn sm pri" id="fixGio">Xếp lại cho đúng ngày</button>`;
+  }
   if(logMoNgay===null)logMoNgay={[todayKey()]:true};
   const q=logQ.trim().toLowerCase();
   const hop=m=>!q||((m.track||"")+" "+(m.order||"")+" "+(m.sku||"")+" "+(m.note||""))
@@ -2451,6 +2501,13 @@ document.addEventListener("click",async e=>{
     if(fbOn()){if(fbNo())fbDay();else fbNghe();return}
     if(!syncOn()){toast("Chưa nối kho chung — kéo xuống mục Cài đặt");return}
     syncPull(false);return;
+  }
+  if(id==="fixGio"){
+    const n=lechNgay(false);
+    if(confirm(`Xếp lại ${n} lượt về đúng ngày theo giờ Việt Nam?\n\nSố tồn không đổi, chỉ đổi ngày trong nhật ký.`)){
+      lechNgay(true);S.daSuaGio=1;save();renderAll();toast(`Đã xếp lại ${n} lượt`);
+    }
+    return;
   }
   if(id==="huyFind"){huyFind();return}
   if(id==="huyGo"){huyApply();return}
