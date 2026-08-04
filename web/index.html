@@ -184,6 +184,16 @@ table.list tfoot td{background:var(--sunk);font-weight:640}
 #syncChip.ok{border-color:var(--act);color:var(--act)}
 #syncChip.err{border-color:var(--lock);color:var(--lock)}
 #syncChip.busy{opacity:.6}
+table.list tr.ngay td{background:var(--sunk);font-weight:680;cursor:pointer;white-space:normal}
+table.list tr.ngay .dongngay{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:baseline;
+  justify-content:space-between;position:sticky;left:0;max-width:calc(100vw - 76px)}
+table.list tr.ngay:hover td{background:var(--act-soft)}
+table.list tr.ngay .mui{display:inline-block;width:14px;color:var(--ink3)}
+table.list tr.nhom td{cursor:pointer}
+table.list tr.nhom:hover td{background:var(--act-soft)}
+table.list tr.nhom td:first-child{padding-left:26px}
+table.list tr.don td:first-child{padding-left:44px}
+table.list tr.don td{font-size:12.5px;color:var(--ink2)}
 table.list tr.huy td{opacity:.62}
 table.list tr.huy code{text-decoration:line-through}
 
@@ -289,6 +299,11 @@ table.list tr.huy code{text-decoration:line-through}
 
 <section class="card" data-tab="log">
   <h2>Nhật ký <span class="hint" id="logHint"></span></h2>
+  <div class="bar" style="padding:0 0 12px">
+    <input type="search" id="logQ" placeholder="Tìm mã vận đơn, mã đơn hoặc mã SKU…"
+      style="max-width:340px" autocomplete="off">
+    <span class="note" id="logQInfo"></span>
+  </div>
   <div id="logBox"></div>
 </section>
 
@@ -366,7 +381,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="3.5", APP_TEN="nhật ký mới nhất lên đầu";
+const APP_VER="3.6", APP_TEN="nhật ký gom theo ngày, bấm xem chi tiết";
 const uid=()=>Math.random().toString(36).slice(2,9);
 const todayKey=()=>new Date().toISOString().slice(0,10);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -2245,31 +2260,95 @@ function huyUndo(id){
 }
 
 /* ---------- nhật ký ---------- */
+/* Một ngày 200-300 đơn nên nhật ký gom ba tầng:
+     ngày  →  mã hàng + size  →  từng đơn.
+   Mặc định chỉ mở ngày hôm nay, các ngày trước gấp lại cho gọn. */
+let logMoNgay=null,logMoNhom={},logQ="";
 function renderLog(){
   const box=document.getElementById("logBox");
-  /* Sắp theo ngày+giờ, mới nhất lên đầu. Không dựa vào thứ tự trong mảng nữa:
-     khi nối Firebase, danh sách được dựng lại từ máy chủ nên thứ tự cũ không còn. */
-  const moc=m=>(m.d||"")+" "+(m.h||"")+" "+(m.id||"");
-  const log=S.moves.slice().sort((a,b)=>moc(a)<moc(b)?1:moc(a)>moc(b)?-1:0).slice(0,200);
+  if(logMoNgay===null)logMoNgay={[todayKey()]:true};
+  const q=logQ.trim().toLowerCase();
+  const hop=m=>!q||((m.track||"")+" "+(m.order||"")+" "+(m.sku||"")+" "+(m.note||""))
+    .toLowerCase().includes(q);
+  const ds=S.moves.filter(hop);
+  const info=document.getElementById("logQInfo");
+  if(info)info.textContent=q?`${ds.length} lượt khớp "${logQ.trim()}"`:"";
   document.getElementById("logHint").textContent=
-    S.moves.length?`${S.moves.length} lượt · xuất hôm nay ${outToday()} đôi · huỷ ${huyToday()} đôi`
-      +(S.moves.length>200?" · đang xem 200 lượt mới nhất":""):"";
-  if(!log.length){box.innerHTML='<p class="empty">Chưa có phát sinh nào. Nạp file PDF hoặc bấm đặt hàng để bắt đầu.</p>';return}
+    S.moves.length?`${S.moves.length} lượt · xuất hôm nay ${outToday()} đôi · huỷ ${huyToday()} đôi`:"";
+  if(!ds.length){
+    box.innerHTML=`<p class="empty">${q?"Không tìm thấy lượt nào khớp.":
+      "Chưa có phát sinh nào. Nạp file PDF hoặc bấm đặt hàng để bắt đầu."}</p>`;
+    demTab();return;
+  }
   demTab();
+
+  /* gom theo ngày, rồi trong ngày gom theo mã + size + loại */
+  const ngay={};
+  ds.forEach(m=>{
+    const d=m.d||"(không rõ ngày)";
+    const n=ngay[d]||(ngay[d]={d,xuat:0,ve:0,huy:0,luot:0,nhom:{},dsNhom:[]});
+    n.luot++;
+    if(m.huy)n.huy+=m.q; else if(m.t==="out")n.xuat+=m.q; else n.ve+=m.q;
+    const loai=m.huy?"huy":m.t;
+    const k=m.sku+"|"+m.size+"|"+loai;
+    let g=n.nhom[k];
+    if(!g){g=n.nhom[k]={sku:m.sku,size:m.size,loai,q:0,don:[]};n.dsNhom.push(g)}
+    g.q+=m.q;g.don.push(m);
+  });
+  const dsNgay=Object.values(ngay).sort((a,b)=>a.d<b.d?1:-1);
+  const gio=m=>(m.h||"");
+  const nhan={out:'<span class="pill low">Xuất</span>',
+              in:'<span class="pill ok">Đặt về</span>',
+              huy:'<span class="pill bad">Đã huỷ</span>'};
+  const THU=["Chủ nhật","Thứ hai","Thứ ba","Thứ tư","Thứ năm","Thứ sáu","Thứ bảy"];
+  const tenNgay=d=>{
+    if(d===todayKey())return "Hôm nay";
+    const t=new Date(d+"T00:00:00");
+    return isNaN(t)?d:THU[t.getDay()];
+  };
+
+  let html="";
+  for(const n of dsNgay){
+    const mo=q?true:!!logMoNgay[n.d];      /* đang tìm thì mở hết cho dễ thấy */
+    const tom=[n.xuat?`xuất ${n.xuat} đôi`:"",n.ve?`đặt về ${n.ve} đôi`:"",
+               n.huy?`huỷ ${n.huy} đôi`:""].filter(Boolean).join(" · ");
+    /* Một ô chạy hết bề ngang, cho xuống dòng — không thì trên điện thoại
+       phần tổng kết bị đẩy ra ngoài màn hình, phải kéo ngang mới thấy. */
+    html+=`<tr class="ngay" data-ngay="${esc(n.d)}"><td colspan="9"><div class="dongngay">
+        <span><span class="mui">${mo?"▾":"▸"}</span><b>${esc(n.d)}</b>
+          <span class="note" style="margin-left:6px">${tenNgay(n.d)}</span></span>
+        <span class="note">${n.luot} lượt${tom?" · "+tom:""}</span>
+      </div></td></tr>`;
+    if(!mo)continue;
+    n.dsNhom.sort((a,b)=>a.sku<b.sku?-1:a.sku>b.sku?1:a.size-b.size);
+    for(const g of n.dsNhom){
+      const k=n.d+"|"+g.sku+"|"+g.size+"|"+g.loai;
+      const moG=q?true:!!logMoNhom[k];
+      const ten=(findSku(g.sku)||{it:{}}).it.ten||"";
+      html+=`<tr class="nhom${g.loai==="huy"?" huy":""}" data-nhomlog="${esc(k)}"><td colspan="2">
+          <span class="mui">${moG?"▾":"▸"}</span><code>${esc(g.sku)}</code>
+          ${ten?` <span class="note">${esc(ten)}</span>`:""}</td>
+        <td>${nhan[g.loai]}</td><td class="n">size ${g.size}</td>
+        <td class="n"><b>${g.q}</b></td>
+        <td colspan="4"><span class="note">${g.don.length} đơn${moG?"":" — bấm để xem chi tiết"}</span></td></tr>`;
+      if(!moG)continue;
+      g.don.slice().sort((a,b)=>gio(a)<gio(b)?1:-1).forEach(m=>{
+        html+=`<tr class="don${m.huy?" huy":""}">
+          <td class="num">${esc(m.h||"")}</td>
+          <td><code>${esc(m.track||"—")}</code></td>
+          <td>${m.order?"Đơn "+esc(m.order):(m.note||"")}</td>
+          <td class="n">size ${m.size}</td><td class="n">${m.q}</td>
+          <td colspan="3"><span class="note">${m.huy?`hoàn về kho ${esc(m.huy.d)} ${esc(m.huy.h||"")}`:""}</span></td>
+          <td class="noprint">${m.huy
+            ? `<button class="btn sm" data-unhuy="${m.id}" title="Bỏ đánh dấu huỷ">↶</button>`
+            : `<button class="btn sm warn" data-undo="${m.id}" title="Hoàn tác lượt này">✕</button>`}</td></tr>`;
+      });
+    }
+  }
   box.innerHTML=`<div class="gscroll"><table class="list">
-    <thead><tr><th>Ngày</th><th>Giờ</th><th>Loại</th><th>Mã vận đơn</th><th>Mã SKU</th>
-      <th class="n">Size</th><th class="n">SL</th><th>Ghi chú</th><th class="noprint"></th></tr></thead>
-    <tbody>${log.map(m=>`<tr${m.huy?' class="huy"':""}>
-      <td class="num">${m.d}</td><td class="num">${m.h||""}</td>
-      <td>${m.huy?'<span class="pill bad">Đã huỷ</span>'
-             :m.t==="out"?'<span class="pill low">Xuất</span>':'<span class="pill ok">Đặt về</span>'}</td>
-      <td><code>${esc(m.track||"—")}</code></td>
-      <td><code>${esc(m.sku)}</code></td><td class="n">${m.size}</td><td class="n">${m.q}</td>
-      <td class="note">${m.huy?`Hoàn về kho ${esc(m.huy.d)}`:(m.order?"Đơn "+esc(m.order):(m.note||""))}</td>
-      <td class="noprint">${m.huy
-        ? `<button class="btn sm" data-unhuy="${m.id}" title="Bỏ đánh dấu huỷ">↶</button>`
-        : `<button class="btn sm warn" data-undo="${m.id}" title="Hoàn tác dòng này">✕</button>`}</td>
-    </tr>`).join("")}</tbody></table></div>`;
+    <thead><tr><th>Ngày / Giờ</th><th>Mã vận đơn</th><th>Loại</th><th class="n">Size</th>
+      <th class="n">SL</th><th colspan="4">Chi tiết</th></tr></thead>
+    <tbody>${html}</tbody></table></div>`;
 }
 function undo(id){
   const i=S.moves.findIndex(m=>m.id===id);if(i<0)return;
@@ -2299,6 +2378,11 @@ document.addEventListener("click",async e=>{
   const t=e.target,btn=t.closest("button"),ph=t.closest("[data-img]");
   const es=t.closest("[data-edsku]");
   if(es&&!btn){suaMa(es.dataset.edsku);return}
+  /* Phải nằm trên chỗ "không phải nút thì thôi" bên dưới, vì đây là bấm vào cả dòng. */
+  const rn=t.closest("[data-ngay]");
+  if(rn&&!btn){logMoNgay[rn.dataset.ngay]=!logMoNgay[rn.dataset.ngay];renderLog();return}
+  const rg=t.closest("[data-nhomlog]");
+  if(rg&&!btn){logMoNhom[rg.dataset.nhomlog]=!logMoNhom[rg.dataset.nhomlog];renderLog();return}
   if(t.id==="imgModal"){closeImg();return}
   const tb=t.closest("#tabs button");
   if(tb){doiTab(tb.dataset.t);return}
@@ -2479,6 +2563,7 @@ document.addEventListener("input",e=>{
   if(t.id==="syncUrl"){S.settings.syncUrl=t.value.trim();save({local:true});
     setSync(syncOn()?"ok":"off","");return}
   if(t.id==="syncToken"){S.settings.syncToken=t.value.trim();save({local:true});return}
+  if(t.id==="logQ"){logQ=t.value;renderLog();return}
   if(t.id==="fbUrl"||t.id==="fbMa"){
     S.settings[t.id]=t.value.trim();save({local:true});
     clearTimeout(fbNoiT);fbNoiT=setTimeout(()=>{if(fbOn())fbNghe();else setSync("off","")},900);
