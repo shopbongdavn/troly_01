@@ -366,7 +366,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="3.4", APP_TEN="đọc đủ mọi tờ phiếu, gộp dòng cho dễ nhìn";
+const APP_VER="3.5", APP_TEN="nhật ký mới nhất lên đầu";
 const uid=()=>Math.random().toString(36).slice(2,9);
 const todayKey=()=>new Date().toISOString().slice(0,10);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -2247,9 +2247,13 @@ function huyUndo(id){
 /* ---------- nhật ký ---------- */
 function renderLog(){
   const box=document.getElementById("logBox");
-  const log=S.moves.slice().reverse().slice(0,80);
+  /* Sắp theo ngày+giờ, mới nhất lên đầu. Không dựa vào thứ tự trong mảng nữa:
+     khi nối Firebase, danh sách được dựng lại từ máy chủ nên thứ tự cũ không còn. */
+  const moc=m=>(m.d||"")+" "+(m.h||"")+" "+(m.id||"");
+  const log=S.moves.slice().sort((a,b)=>moc(a)<moc(b)?1:moc(a)>moc(b)?-1:0).slice(0,200);
   document.getElementById("logHint").textContent=
-    S.moves.length?`${S.moves.length} lượt · xuất hôm nay ${outToday()} đôi · huỷ ${huyToday()} đôi`:"";
+    S.moves.length?`${S.moves.length} lượt · xuất hôm nay ${outToday()} đôi · huỷ ${huyToday()} đôi`
+      +(S.moves.length>200?" · đang xem 200 lượt mới nhất":""):"";
   if(!log.length){box.innerHTML='<p class="empty">Chưa có phát sinh nào. Nạp file PDF hoặc bấm đặt hàng để bắt đầu.</p>';return}
   demTab();
   box.innerHTML=`<div class="gscroll"><table class="list">
