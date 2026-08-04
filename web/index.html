@@ -366,7 +366,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="3.3", APP_TEN="sửa được tên và mã SKU gõ nhầm";
+const APP_VER="3.4", APP_TEN="đọc đủ mọi tờ phiếu, gộp dòng cho dễ nhìn";
 const uid=()=>Math.random().toString(36).slice(2,9);
 const todayKey=()=>new Date().toISOString().slice(0,10);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -387,22 +387,44 @@ async function inflate(bytes){
 /* Tách mọi object của PDF, kể cả object gói trong ObjStm đã nén */
 async function pdfObjects(u8){
   const bin=L(u8),objs={};
+  const dau=[];
   const re=/(\d+)\s+\d+\s+obj\b/g;let m;
-  while((m=re.exec(bin))){
-    const s=m.index+m[0].length;let e=bin.indexOf("endobj",s);
-    objs[m[1]]={body:bin.slice(s,e<0?bin.length:e)};
+  while((m=re.exec(bin)))dau.push({id:m[1],s:m.index+m[0].length});
+  for(let i=0;i<dau.length;i++){
+    const s=dau[i].s,het=i+1<dau.length?dau[i+1].s:bin.length;
+    const sm=/stream\r\n|stream\n|stream\r/.exec(bin.slice(s,Math.min(het,s+8192)));
+    if(!sm){
+      let e=bin.indexOf("endobj",s);
+      if(e<0||e>het)e=het;
+      objs[dau[i].id]={body:bin.slice(s,e)};
+      continue;
+    }
+    const dict=bin.slice(s,s+sm.index);
+    const ds=s+sm.index+sm[0].length;
+    /* Phải tin /Length trước. Dữ liệu đã nén hoàn toàn có thể chứa đúng chữ
+       "endstream", dò theo chuỗi là cắt cụt cả gói object — một tờ phiếu mất
+       chữ và biến thành rác không đọc ra mã nào. */
+    let de=-1;
+    const chiRa=/\/Length\s+(\d+)\s+\d+\s+R/.test(dict);
+    const ln=chiRa?null:(/\/Length\s+(\d+)/.exec(dict)||[])[1];
+    if(ln!=null){
+      const n=+ln;
+      if(ds+n<=bin.length&&/^\s*endstream/.test(bin.substr(ds+n,12)))de=ds+n;
+    }
+    if(de<0){
+      de=bin.indexOf("endstream",ds);
+      if(de<0||de>het)de=het;
+      /* zlib từ chối byte thừa: cắt ký tự xuống dòng ngay trước endstream */
+      while(de>ds&&(bin.charCodeAt(de-1)===10||bin.charCodeAt(de-1)===13))de--;
+    }
+    objs[dau[i].id]={body:bin.slice(s,ds),dict,tho:bin.slice(ds,de)};
   }
   for(const id in objs){
-    const b=objs[id].body,sm=/stream\r\n|stream\n|stream\r/.exec(b);
-    if(!sm)continue;
-    const s=sm.index+sm[0].length;let e=b.indexOf("endstream",s);
-    if(e<0)e=b.length;
-    /* zlib từ chối byte thừa: cắt ký tự xuống dòng ngay trước endstream */
-    while(e>s&&(b.charCodeAt(e-1)===10||b.charCodeAt(e-1)===13))e--;
-    objs[id].dict=b.slice(0,sm.index);
-    const raw=B(b.slice(s,e));
-    if(/FlateDecode/.test(objs[id].dict)){const o=await inflate(raw);if(o)objs[id].data=L(o)}
-    else objs[id].data=L(raw);
+    if(objs[id].tho==null)continue;
+    if(/FlateDecode/.test(objs[id].dict)){
+      const o=await inflate(B(objs[id].tho));if(o)objs[id].data=L(o);
+    }else objs[id].data=objs[id].tho;
+    delete objs[id].tho;
   }
   for(const id of Object.keys(objs).filter(i=>objs[i].dict&&/\/Type\s*\/ObjStm/.test(objs[i].dict))){
     const o=objs[id];if(!o.data)continue;
@@ -497,13 +519,17 @@ function waybillOf(txt){
   return {track:pick?pick.u:"",digits:runs.join(" ")};
 }
 /* Bóc SKU + size + SL. Trên phiếu J&T: "…Tím MG,40IJ-f50mg-t-401Qty Total: 1" */
+let lechQty=0;      /* số tờ phiếu mà SL đọc ra không khớp dòng "Qty Total" */
 async function readLabels(u8){
   const pages=await pdfPages(u8),rows=[];
+  lechQty=0;
   const pfx=(S.settings.prefix||"").split(/[,;\s]+/).map(v=>v.replace(/[^\w-]/g,"")).filter(Boolean);
-  /* không dùng \b: trên phiếu mã dính liền số phía trước, ví dụ "TímMG,40IJ-f50mg-t-40" */
+  /* Không dùng \b: trên phiếu mã dính liền số phía trước, ví dụ "TímMG,40IJ-f50mg-t-40".
+     Mã phải dừng ngay sau cụm số size(+SL). Nếu cho nuốt tiếp chữ cái thì tờ phiếu
+     hai sản phẩm sẽ ra "mervp15-bk-401H" — dính chữ H của "Hồng" phía sau — rồi bị bỏ. */
   const tokRe=pfx.length
-    ? new RegExp("(?:"+pfx.join("|")+")-[A-Za-z0-9-]+","gi")
-    : /[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+/g;
+    ? new RegExp("(?:"+pfx.join("|")+")(?:-[A-Za-z0-9]+)*-\\d{2,5}","gi")
+    : /[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)*-\d{2,5}/g;
   for(const raw of pages){
     /* bỏ hết dấu cách để mã SKU không bị ngắt quãng — mốc tìm kiếm cũng bỏ dấu cách theo */
     const t=raw.replace(/\s/g,"");
@@ -513,14 +539,21 @@ async function readLabels(u8){
     const seg=head>=0?t.slice(head+9):t;
     const cut=seg.indexOf("QtyTotal");
     const zone=cut>0?seg.slice(0,cut):seg;
+    const tong=+((/QtyTotal:?(\d+)/.exec(t)||[])[1]||0);   /* dòng "Qty Total" của tờ phiếu */
+    const cuaTrang=[];
     for(const tk of zone.match(tokRe)||[]){
       const m=/^(.*?)-(\d{2})(\d{0,3})$/.exec(tk);
       if(!m||!m[1])continue;
       const size=+m[2];
       if(size<20||size>50)continue;
-      rows.push({sku:m[1].toLowerCase(),size,qty:Math.max(1,+m[3]||1),order,
-                 track:wb.track,digits:wb.digits});
+      cuaTrang.push({sku:m[1].toLowerCase(),size,qty:Math.max(1,+m[3]||1),order,
+                     track:wb.track,digits:wb.digits});
     }
+    /* Số lượng lấy từ mấy chữ số dính sau size trên mã. Tờ phiếu chỉ có một mã
+       thì tin "Qty Total" hơn — đơn mua 2 đôi cùng size không bị đếm thành 1. */
+    if(cuaTrang.length===1&&tong>0)cuaTrang[0].qty=tong;
+    if(tong>0&&cuaTrang.length&&cuaTrang.reduce((a,x)=>a+x.qty,0)!==tong)lechQty++;
+    rows.push(...cuaTrang);
   }
   return rows;
 }
@@ -1789,12 +1822,13 @@ async function handleFiles(files){
   if(!list.length){toast("Chỉ nhận file PDF, Excel hoặc CSV");return}
   const out=document.getElementById("pdfOut");
   out.innerHTML='<p class="empty">Đang đọc file…</p>';
-  let rows=[],bad=0;
+  let rows=[],bad=0,lech=0;
   for(const f of list){
     try{
       const u8=new Uint8Array(await f.arrayBuffer());
       const r=await readLabels(u8);
       if(!r.length)bad++;
+      lech+=lechQty;
       rows=rows.concat(r.map(x=>Object.assign(x,{file:f.name})));
     }catch(e){bad++}
   }
@@ -1810,7 +1844,7 @@ async function handleFiles(files){
   rows.forEach(r=>{const k=r.sku+"|"+r.size+"|"+(r.track||r.order||"");
     if(map[k])map[k].qty+=r.qty;else map[k]=Object.assign({},r)});
   pending=Object.values(map).sort((a,b)=>a.sku.localeCompare(b.sku)||a.size-b.size);
-  pendingMeta={bad,nfile:list.length};
+  pendingMeta={bad,nfile:list.length,lech};
   renderPending();
 }
 /** Đơn này đã trừ kho lần trước chưa? Nhận theo mã vận đơn, không có thì theo mã đơn hàng.
@@ -1826,7 +1860,7 @@ function daTru(r){
   });
 }
 function renderPending(){
-  const bad=pendingMeta.bad,nfile=pendingMeta.nfile;
+  const bad=pendingMeta.bad,nfile=pendingMeta.nfile,lech=pendingMeta.lech||0;
   const out=document.getElementById("pdfOut");
   if(!pending||!pending.length){out.innerHTML="";return}
   let okQty=0,missQty=0;
@@ -1848,18 +1882,35 @@ function renderPending(){
     short:'<span class="pill low">Không đủ tồn</span>',
     nosku:'<span class="pill bad">Chưa có SKU này</span>',
     trung:'<span class="pill mut">Đã trừ rồi</span>'};
+  /* Gộp theo mã + size cho danh sách ngắn lại, dễ dò. Bên trong vẫn giữ đủ
+     từng đơn để trừ kho và để nhận ra đơn đã trừ lần trước. */
+  const gop=[];const chiSo={};
+  rows.forEach(r=>{
+    const k=r.sku+"|"+r.size;
+    let g=chiSo[k];
+    if(!g){g=chiSo[k]={sku:r.sku,size:r.size,ten:r.ten,ton:r.ton,qty:0,soDon:0,dem:{},cu:null};gop.push(g)}
+    g.qty+=r.qty;g.soDon++;
+    g.dem[r.st]=(g.dem[r.st]||0)+r.qty;
+    if(r.cu&&!g.cu)g.cu=r.cu;
+  });
+  gop.sort((a,b)=>a.sku<b.sku?-1:a.sku>b.sku?1:a.size-b.size);
+  const nhan=g=>{
+    const k=Object.keys(g.dem);
+    if(k.length===1)return badge[k[0]];
+    return k.map(x=>badge[x].replace("</span>"," "+g.dem[x]+"</span>")).join(" ");
+  };
   out.innerHTML=`
     <div style="margin-top:16px" class="hr"></div>
     <table class="list"><thead><tr>
-      <th>Mã SKU</th><th>Tên</th><th class="n">Size</th><th class="n">SL đơn</th>
+      <th>Mã SKU</th><th>Tên</th><th class="n">Size</th><th class="n">SL</th>
       <th class="n">Tồn</th><th>Trạng thái</th></tr></thead>
-      <tbody>${rows.map(r=>`<tr>
-        <td><code>${esc(r.sku)}</code></td><td>${esc(r.ten||"—")}</td>
-        <td class="n">${r.size}</td><td class="n">${r.qty}</td>
-        <td class="n">${r.ton==null?"–":r.ton}</td>
-        <td>${badge[r.st]}${r.cu?` <span class="note">trừ ngày ${esc(r.cu.d)} lúc ${esc(r.cu.h||"")}</span>`:""}</td></tr>`).join("")}
+      <tbody>${gop.map(g=>`<tr>
+        <td><code>${esc(g.sku)}</code></td><td>${esc(g.ten||"—")}</td>
+        <td class="n">${g.size}</td><td class="n"><b>${g.qty}</b>${g.soDon>1?` <span class="note">(${g.soDon} đơn)</span>`:""}</td>
+        <td class="n">${g.ton==null?"–":g.ton}</td>
+        <td>${nhan(g)}${g.cu?` <span class="note">trừ ngày ${esc(g.cu.d)} lúc ${esc(g.cu.h||"")}</span>`:""}</td></tr>`).join("")}
       </tbody>
-      <tfoot><tr><td colspan="3">${rows.length} dòng từ ${nfile} file${bad?` (${bad} file không đọc được mã)`:""}</td>
+      <tfoot><tr><td colspan="3">${gop.length} dòng gộp từ ${rows.length} đơn · ${nfile} file${bad?` (${bad} file không đọc được mã)`:""}</td>
         <td class="n">${okQty+missQty+trungQty+laQty}</td><td colspan="2">trừ được ${okQty}${missQty?` · thiếu tồn ${missQty}`:""}${trungQty?` · <b>đã trừ rồi ${trungQty}</b>`:""}${laQty?` · <b>chưa có mã ${laQty}</b>`:""}</td></tr></tfoot>
     </table>
     <div class="bar" style="padding:14px 0 0">
@@ -1868,6 +1919,7 @@ function renderPending(){
       <button class="btn" id="clrOut">Bỏ qua</button>
       ${thieu.length?`<button class="btn" id="themThieu">+ Thêm ${thieu.length} mã chưa có vào kho</button>`:""}
       ${trungQty?`<span class="note" style="color:var(--low)">${trungQty} đơn đã trừ kho lần trước, lần này bỏ qua để khỏi trừ hai lần.</span>`:""}
+      ${lech?`<span class="note" style="color:var(--low)">${lech} tờ phiếu có số lượng đọc ra không khớp dòng "Qty Total" — dò lại mấy tờ đó cho chắc.</span>`:""}
       <label style="display:flex;gap:7px;align-items:center;font-size:13px;width:auto">
         <input type="checkbox" id="negChk" ${allowNeg?"checked":""} style="width:auto">
         Trừ cả dòng không đủ tồn (cho phép tồn âm để đối chiếu sau)</label>
