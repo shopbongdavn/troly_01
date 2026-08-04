@@ -121,6 +121,9 @@ td.pic .ph span{font-size:10px;color:var(--ink3);text-align:center;padding:2px}
 table.grid td.sku{text-align:left;padding:6px 12px;width:210px;min-width:170px}
 td.sku b.ten{display:block;font-size:14px;font-weight:700;letter-spacing:-.01em;line-height:1.25}
 td.sku code{font-family:var(--mono);font-size:11.5px;color:var(--ink3);display:block;letter-spacing:-.02em;margin-top:2px}
+td.sku[data-edsku]{cursor:pointer}
+td.sku .but{font-family:var(--sans);opacity:.4;margin-left:5px}
+td.sku[data-edsku]:hover .but{opacity:1;color:var(--act)}
 td.cell{position:relative;height:44px}
 td.cell .v{display:block;width:100%;height:100%;line-height:44px;font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:15px;font-weight:600}
 td.cell.zero .v{color:var(--ink3)}
@@ -363,7 +366,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="3.2", APP_TEN="ô khoá N vẫn gõ được tồn thực tế";
+const APP_VER="3.3", APP_TEN="sửa được tên và mã SKU gõ nhầm";
 const uid=()=>Math.random().toString(36).slice(2,9);
 const todayKey=()=>new Date().toISOString().slice(0,10);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -1475,7 +1478,8 @@ function renderBoard(){
       <tr class="row">
         <td class="pic"><div class="ph" data-img="${it.id}" role="button" tabindex="0"
           title="Bấm để đổi ảnh">${it.img?`<img src="${it.img}" alt="${esc(it.ten)}">`:'<span>+ ảnh</span>'}</div></td>
-        ${gonDat()?"":`<td class="sku"><b class="ten">${esc(it.ten||it.sku)}</b><code>${esc(it.sku)}</code></td>`}
+        ${gonDat()?"":`<td class="sku" data-edsku="${it.id}" role="button" tabindex="0"
+          title="Bấm để sửa tên và mã SKU"><b class="ten">${esc(it.ten||it.sku)}</b><code>${esc(it.sku)}<span class="but">✎</span></code></td>`}
         ${SZ().map(s=>cellHtml(it,s)).join("")}
         <td class="tot"${mode==="order"?' style="color:var(--act)"':""}>${mode==="order"?(datItem(it)||""):totItem(it)}</td>
         ${gonDat()?"":`<td class="noprint"><button class="btn sm warn" data-del="${it.id}" title="Xoá dòng">✕</button></td>`}
@@ -1871,6 +1875,33 @@ function renderPending(){
 }
 let allowNeg=true;   /* mặc định trừ cả dòng thiếu, để tồn âm rồi đối chiếu sau */
 /** Thêm những mã có trong file đơn mà kho chưa có, để khỏi gõ tay từng dòng. */
+/** Đổi mã SKU đã gõ nhầm. Phải kéo theo cả nhật ký và số đang đặt,
+    không thì đơn cũ mồ côi và số đặt biến mất. */
+function doiSku(it,cu,moi){
+  it.sku=moi;
+  S.moves.forEach(m=>{if(String(m.sku||"").toLowerCase()===cu)m.sku=moi});
+  if(it.id===cu){                 /* nối Firebase thì mã nội bộ chính là mã SKU */
+    if(S.draft[cu]){S.draft[moi]=S.draft[cu];delete S.draft[cu]}
+    it.id=moi;
+  }
+}
+function suaMa(id){
+  const x=items().find(v=>v.it.id===id);if(!x)return;
+  const cu=x.it.sku;
+  const ten=prompt("Tên màu / tên gọi:",x.it.ten||"");
+  if(ten===null)return;
+  const moi=(prompt("Mã SKU — sửa lại nếu gõ nhầm:",cu)||"").trim().toLowerCase();
+  if(!moi){toast("Mã SKU không được để trống");return}
+  if(moi!==cu&&findSku(moi)){toast("Mã "+moi+" đã có ở dòng khác rồi");return}
+  x.it.ten=ten.trim();
+  if(moi!==cu){
+    const soDon=S.moves.filter(m=>String(m.sku||"").toLowerCase()===cu).length;
+    if(soDon&&!confirm(`Đổi ${cu} → ${moi}.\n\n${soDon} dòng nhật ký cũ sẽ đổi theo. Đồng ý?`))return;
+    doiSku(x.it,cu,moi);
+  }
+  save();renderAll();
+  toast(moi!==cu?`Đã đổi ${cu} → ${moi}`:"Đã đổi tên");
+}
 function themMaThieu(){
   if(!pending)return;
   const thieu=[...new Set(pending.map(r=>r.sku).filter(sk=>!findSku(sk)))];
@@ -2210,6 +2241,8 @@ function exportCsv(){
 /* ═══════════ sự kiện ═══════════ */
 document.addEventListener("click",async e=>{
   const t=e.target,btn=t.closest("button"),ph=t.closest("[data-img]");
+  const es=t.closest("[data-edsku]");
+  if(es&&!btn){suaMa(es.dataset.edsku);return}
   if(t.id==="imgModal"){closeImg();return}
   const tb=t.closest("#tabs button");
   if(tb){doiTab(tb.dataset.t);return}
