@@ -363,7 +363,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="3.1", APP_TEN="đồng bộ bằng Firebase, máy kia thấy trong một giây";
+const APP_VER="3.2", APP_TEN="ô khoá N vẫn gõ được tồn thực tế";
 const uid=()=>Math.random().toString(36).slice(2,9);
 const todayKey=()=>new Date().toISOString().slice(0,10);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -705,6 +705,16 @@ const SZ=()=>S.settings.sizes;
 const items=()=>S.groups.flatMap(g=>g.items.map(it=>({g,it})));
 const findSku=sku=>items().find(x=>x.it.sku.toLowerCase()===String(sku).toLowerCase());
 function cellOf(it,s){if(!it.sizes[s])it.sizes[s]={q:0,lock:false};return it.sizes[s]}
+/* Ô khoá N vẫn có thể còn hàng thật trong kho — khoá chỉ có nghĩa là bên Ijomi
+   hết, không đặt thêm được. Nên chỗ lưu phải mang cả hai:
+     5    = không khoá, còn 5      N   = khoá, còn 0
+     N5   = khoá, còn 5            N-2 = khoá, âm 2 (xuất quá số kiểm kê)      */
+const oRaChu=c=>c.lock?("N"+(c.q||"")):(c.q||0);
+function oVaoO(v){
+  const t=String(v==null?"":v).trim().toUpperCase();
+  if(t.charAt(0)==="N")return {q:Math.round(+t.slice(1)||0),lock:true};
+  return {q:Math.round(+t||0),lock:false};
+}
 const totItem=it=>SZ().reduce((a,s)=>a+(cellOf(it,s).q||0),0);
 const totGroup=g=>g.items.reduce((a,it)=>a+totItem(it),0);
 const totAll=()=>S.groups.reduce((a,g)=>a+totGroup(g),0);
@@ -736,7 +746,7 @@ function fbCay(){
     t.nhom[g.id]={ten:g.ten||"",tt:i};
     g.items.forEach((it,j)=>{
       t.mh[it.sku]={ten:it.ten||"",gid:g.id,tt:j};
-      const k={};SZ().forEach(z=>{const c=cellOf(it,z);k[z]=c.lock?"N":(c.q||0)});
+      const k={};SZ().forEach(z=>{k[z]=oRaChu(cellOf(it,z))});
       t.kho[it.sku]=k;
       if(it.img)t.anh[it.sku]=it.img;
     });
@@ -775,8 +785,7 @@ function fbVeS(t){
     const g=theo[mh[sku].gid]||gs[0];if(!g)return;
     const o={};
     S.settings.sizes.forEach(z=>{
-      const v=(kho[sku]||{})[z];
-      o[z]=String(v).toUpperCase()==="N"?{q:0,lock:true}:{q:Math.round(+v||0),lock:false};
+      o[z]=oVaoO((kho[sku]||{})[z]);
     });
     g.items.push({id:sku,sku,ten:String(mh[sku].ten||""),img:anh[sku]||"",sizes:o});
   });
@@ -796,10 +805,8 @@ function fbDatLa(m){
     const a=p.split("/"),v=m[p];
     if(a[0]==="kho"){
       const x=findSku(a[1]);if(!x)continue;
-      const c=cellOf(x.it,+a[2]);
-      if(v===null){c.q=0;c.lock=false}
-      else if(String(v).toUpperCase()==="N"){c.q=0;c.lock=true}
-      else{c.q=Math.round(+v||0);c.lock=false}
+      const c=cellOf(x.it,+a[2]),o=v===null?{q:0,lock:false}:oVaoO(v);
+      c.q=o.q;c.lock=o.lock;
     }else if(a[0]==="dat"){
       const x=findSku(a[1]);if(!x)continue;
       const d=S.draft[x.it.id]=S.draft[x.it.id]||{};
@@ -1059,7 +1066,7 @@ function packState(){
     if(!g.items.length){kho.push([g.ten,"",""].concat(sizes.map(()=>"")));return}
     g.items.forEach(it=>{
       kho.push([g.ten,it.sku,it.ten].concat(sizes.map(z=>{
-        const c=cellOf(it,z);return c.lock?"N":(c.q||0);
+        return oRaChu(cellOf(it,z));
       })));
     });
   });
@@ -1107,8 +1114,7 @@ function unpackState(d){
     if(!sku)return;      /* dòng giữ chỗ của nhóm rỗng */
     const sz={};
     sizes.forEach((z,i)=>{
-      const v=r[3+i];
-      sz[z]=String(v).trim().toUpperCase()==="N"?{q:0,lock:true}:{q:Math.round(+v||0),lock:false};
+      sz[z]=oVaoO(r[3+i]);
     });
     g.items.push({id:uid(),sku,ten:String(r[2]||"").trim(),img:imgOf[sku]||"",sizes:sz});
   });
@@ -1380,9 +1386,9 @@ function demTab(){
 /* ═══════════ giao diện ═══════════ */
 let mode="view";
 const HINTS={
-  view:"chỉ xem — ô đỏ N là hàng Ijomi đã khoá, không đặt được",
-  edit:"gõ số tồn thực tế sau khi kiểm kho, ô khoá không nhập được",
-  lock:"bấm vào ô để bật/tắt trạng thái khoá N",
+  view:"chỉ xem — ô đỏ là hàng Ijomi đã khoá, không đặt thêm được, nhưng vẫn có thể còn tồn",
+  edit:"gõ số tồn thực tế sau khi kiểm kho — ô đỏ đã khoá vẫn gõ tồn được",
+  lock:"bấm vào ô để bật/tắt khoá N; khoá không làm mất số tồn đang có",
   order:"gõ số lượng muốn đặt, xong bấm nút xác nhận ở cuối bảng"
 };
 let toastT=null;
@@ -1410,12 +1416,12 @@ function cellHtml(it,s){
   const id=it.id+":"+s;
   if(mode==="lock")
     return `<td class="${cls.join(" ")}"><button class="tap" data-lock="${id}"
-      aria-label="Size ${s}${c.lock?" đang khoá":""}">${c.lock?"N":(c.q||"")}</button></td>`;
+      aria-label="Size ${s}${c.lock?" đang khoá":""}">${c.lock?(c.q||"N"):(c.q||"")}</button></td>`;
   if(mode==="edit")
-    return c.lock
-      ? `<td class="${cls.join(" ")}"><span class="v">N</span></td>`
-      : `<td class="${cls.join(" ")}"><input type="number" inputmode="numeric" min="0" step="1" value="${c.q||""}"
-          data-q="${id}" aria-label="Tồn size ${s}"></td>`;
+    /* Ô khoá vẫn cho sửa tồn: khoá chỉ chặn ĐẶT THÊM, không có nghĩa là kho rỗng. */
+    return `<td class="${cls.join(" ")}"><input type="number" inputmode="numeric" min="0" step="1" value="${c.q||""}"
+        data-q="${id}" aria-label="Tồn size ${s}${c.lock?" (đang khoá N)":""}"
+        ${c.lock?'placeholder="N"':""}></td>`;
   if(mode==="order"){
     if(c.lock)return `<td class="${cls.join(" ")}"><span class="v">N</span></td>`;
     const d=(S.draft[it.id]||{})[s]||"";
@@ -1423,7 +1429,7 @@ function cellHtml(it,s){
     return `<td class="${cls.join(" ")}"><input type="number" inputmode="numeric" min="0" step="1" value="${d}"
       data-o="${id}" aria-label="Đặt thêm size ${s}"></td>`;
   }
-  return `<td class="${cls.join(" ")}"><span class="v">${c.lock?"N":(c.q||"")}</span></td>`;
+  return `<td class="${cls.join(" ")}"><span class="v">${c.lock?(c.q||"N"):(c.q||"")}</span></td>`;
 }
 let timKiem="";
 function khop(g,it){
@@ -2196,7 +2202,7 @@ const cq=v=>`"${String(v==null?"":v).replace(/"/g,'""')}"`;
 function exportCsv(){
   const head=["Nhóm","SKU","Tên",...SZ(),"Tổng"];
   const body=items().map(x=>[x.g.ten,x.it.sku,x.it.ten,
-    ...SZ().map(s=>{const c=cellOf(x.it,s);return c.lock?"N":(c.q||0)}),totItem(x.it)]);
+    ...SZ().map(s=>oRaChu(cellOf(x.it,s))),totItem(x.it)]);
   dl(`ton-kho-${todayKey()}.csv`,[head,...body].map(r=>r.map(cq).join(",")).join("\n"));
   toast("Đã tải file CSV");
 }
@@ -2228,7 +2234,7 @@ document.addEventListener("click",async e=>{
   }
   if(d.lock){
     const [pid,s]=d.lock.split(":"),x=items().find(v=>v.it.id===pid);
-    if(x){const c=cellOf(x.it,+s);c.lock=!c.lock;if(c.lock)c.q=0;save();renderBoard()}
+    if(x){const c=cellOf(x.it,+s);c.lock=!c.lock;save();renderBoard()}
     return;
   }
   if(d.del){
