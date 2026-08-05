@@ -297,10 +297,13 @@ table.list tr.huy code{text-decoration:line-through}
 </section>
 
 <section class="card" data-tab="huy">
-  <h2>Huỷ đơn — hoàn hàng về kho <span class="hint">tìm theo mã vận đơn, trừ khỏi đơn xuất và cộng lại tồn</span></h2>
+  <h2>Huỷ đơn / trả hàng — hoàn về kho <span class="hint">tìm theo mã đơn hàng hoặc mã vận đơn, trừ khỏi đơn xuất và cộng lại tồn</span></h2>
   <div class="pad">
-    <label><span class="lbl">Mã vận đơn</span>
-      <textarea id="huyIn" rows="3" placeholder="862174934553&#10;862142504553&#10;mỗi dòng một mã — dán được cả mã đơn hàng"></textarea></label>
+    <label><span class="lbl">Mã đơn hàng hoặc mã vận đơn</span>
+      <textarea id="huyIn" rows="4" placeholder="585371144781726994&#10;2607303BBVC7C2&#10;862174934553&#10;dán thẳng cả cột từ Excel cũng được — nhận cả mã có chữ"></textarea></label>
+    <p class="note" style="margin:-4px 0 10px">Hàng trả về đổi mã vận đơn nên
+      <b>dán cột "Mã đơn hàng"</b> mới khớp; mã vận đơn chỉ khớp với đơn lúc gửi đi.
+      Huỷ xong lượt xuất vẫn nằm trong Nhật ký, chỉ đổi thành “Đã huỷ”.</p>
     <div class="bar" style="padding:12px 0 0">
       <button class="btn pri" id="huyFind">Tìm đơn</button>
       <span class="note">Dán mã vận đơn của những đơn bị huỷ ngang, tìm xong xem kỹ rồi mới xác nhận.</span>
@@ -394,7 +397,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="3.8", APP_TEN="thấy tồn ngay khi gõ số đặt";
+const APP_VER="3.9", APP_TEN="huỷ / trả hàng tìm được theo mã đơn có chữ";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -2229,21 +2232,31 @@ function dungBang(){
 let huyHits=null;
 /** Một lượt xuất khớp mã khi trùng mã vận đơn, mã đơn hàng, hoặc mã nằm trong
     dãy số đọc được trên phiếu (phòng khi tách mã vận đơn lệch vài chữ số). */
-function matchMove(m,code){
-  if(m.t!=="out")return false;
-  const c=code.replace(/\D/g,"");
-  if(!c||c.length<6)return false;
-  if((m.track||"")===c)return true;
-  if((m.order||"")===c)return true;
-  return ((m.digits||"").replace(/\D/g,"")).includes(c);
+/* Mã của sàn có cả chữ lẫn số — TikTok 585371144781726994 (toàn số),
+   Shopee 2607303BBVC7C2, vận đơn SPXVN066934251857 hay VTPVN9043606619.
+   Nên phải giữ nguyên chữ; lọc bỏ chữ như trước là không mã nào khớp nổi. */
+const chuanMa=v=>String(v==null?"":v).toUpperCase().replace(/[^A-Z0-9]/g,"");
+/** Trả về khớp ở đâu: "don" | "vandon" | "day" | "" (không khớp). */
+function khopO(m,code){
+  if(m.t!=="out")return "";
+  const c=chuanMa(code);
+  if(c.length<6)return "";
+  if(chuanMa(m.order)===c)return "don";
+  if(chuanMa(m.track)===c)return "vandon";
+  /* dãy số dài in dưới mã vạch. Chỉ dò khi mã đủ dài, không thì một mã ngắn
+     lọt vào giữa dãy số của đơn khác là huỷ nhầm. */
+  if(c.length>=10&&/^\d+$/.test(c)&&(m.digits||"").replace(/\D/g,"").includes(c))return "day";
+  return "";
 }
+const matchMove=(m,code)=>!!khopO(m,code);
 function huyFind(){
+  /* dán cả cột từ Excel cũng được: cắt theo mọi thứ không phải chữ/số */
   const codes=[...new Set((document.getElementById("huyIn").value||"")
-    .split(/[^\d]+/).filter(v=>v.length>=6))];
+    .split(/[^A-Za-z0-9]+/).map(chuanMa).filter(v=>v.length>=6))];
   const out=document.getElementById("huyOut");
   if(!codes.length){
     huyHits=null;
-    out.innerHTML='<p class="empty">Chưa nhập mã nào. Mỗi dòng một mã vận đơn.</p>';
+    out.innerHTML='<p class="empty">Chưa nhập mã nào. Mỗi dòng một mã đơn hàng hoặc mã vận đơn.</p>';
     return;
   }
   huyHits=codes.map(c=>({code:c,moves:S.moves.filter(m=>matchMove(m,c))}));
@@ -2254,34 +2267,47 @@ function renderHuy(){
   if(!huyHits){out.innerHTML="";return}
   let canQty=0,canCnt=0;
   const rows=[];
+  /* Dán cả cột thì một lượt xuất khớp cả mã đơn lẫn mã vận đơn. Chỉ tính một
+     lần, không thì nút báo số đôi nhiều hơn số thật sự hoàn về. */
+  const daTinh=new Set();
   huyHits.forEach(h=>{
     if(!h.moves.length){rows.push({code:h.code,st:"none"});return}
     h.moves.forEach(m=>{
-      if(!m.huy){canQty+=m.q;canCnt++}
-      rows.push({code:h.code,m,st:m.huy?"done":"can"});
+      const lap=daTinh.has(m.id);
+      if(!lap)daTinh.add(m.id);
+      if(!m.huy&&!lap){canQty+=m.q;canCnt++}
+      rows.push({code:h.code,m,st:m.huy?"done":lap?"lap":"can",o:khopO(m,h.code),nhieu:h.moves.length});
     });
   });
   const badge={can:'<span class="pill ok">Sẽ hoàn về kho</span>',
     done:'<span class="pill mut">Đã huỷ trước đó</span>',
+    lap:'<span class="pill mut">Đã tính ở dòng trên</span>',
     none:'<span class="pill bad">Không tìm thấy đơn xuất</span>'};
+  const nhanKhop={don:'theo <b>mã đơn</b>',vandon:'theo mã vận đơn',day:'theo dãy số trên phiếu'};
+  const soKhongThay=rows.filter(r=>r.st==="none").length;
   out.innerHTML=`
     <div style="margin-top:16px" class="hr"></div>
     <div class="gscroll"><table class="list"><thead><tr>
-      <th>Mã đã nhập</th><th>Mã vận đơn</th><th>Mã SKU</th>
+      <th>Mã đã nhập</th><th>Khớp ở đâu</th><th>Mã đơn</th><th>Mã vận đơn</th><th>Mã SKU</th>
       <th class="n">Size</th><th class="n">SL</th><th>Ngày xuất</th><th>Trạng thái</th></tr></thead>
       <tbody>${rows.map(r=>`<tr>
         <td><code>${esc(r.code)}</code></td>
-        <td><code>${esc(r.m?(r.m.track||r.m.order||"—"):"—")}</code></td>
+        <td><span class="note">${r.m?(nhanKhop[r.o]||"—"):"—"}</span></td>
+        <td><code>${esc(r.m?(r.m.order||"—"):"—")}</code></td>
+        <td><code>${esc(r.m?(r.m.track||"—"):"—")}</code></td>
         <td>${r.m?`<code>${esc(r.m.sku)}</code>`:"—"}</td>
         <td class="n">${r.m?r.m.size:"–"}</td><td class="n">${r.m?r.m.q:"–"}</td>
-        <td class="num">${r.m?r.m.d:"–"}</td><td>${badge[r.st]}</td></tr>`).join("")}
+        <td class="num">${r.m?r.m.d:"–"}</td>
+        <td>${badge[r.st]}${r.m&&r.nhieu>1?' <span class="note">đơn này có '+r.nhieu+' món</span>':""}</td></tr>`).join("")}
       </tbody>
-      <tfoot><tr><td colspan="4">${huyHits.length} mã đã nhập</td>
+      <tfoot><tr><td colspan="6">${huyHits.length} mã đã nhập${soKhongThay?` · ${soKhongThay} mã không tìm thấy`:""}</td>
         <td class="n">${canQty}</td><td colspan="2">${canCnt} lượt xuất sẽ được hoàn về kho</td></tr></tfoot>
     </table></div>
     <div class="bar" style="padding:14px 0 0">
       <button class="btn pri" id="huyGo" ${canCnt?"":"disabled"}>Xác nhận huỷ — hoàn ${canQty} đôi về kho</button>
       <button class="btn" id="huyClr">Bỏ qua</button>
+      ${soKhongThay?`<span class="note" style="color:var(--low)">${soKhongThay} mã không khớp lượt xuất nào.
+        Hàng trả về mang mã vận đơn mới nên phải dán cột <b>Mã đơn hàng</b>, không phải cột mã vận đơn.</span>`:""}
     </div>`;
 }
 function huyApply(){
