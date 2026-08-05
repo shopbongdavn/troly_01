@@ -397,7 +397,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="3.9", APP_TEN="huỷ / trả hàng tìm được theo mã đơn có chữ";
+const APP_VER="4.0", APP_TEN="nhật ký giữ đủ mã sàn, mã Sapo và mã vận đơn";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -857,8 +857,8 @@ function fbCay(){
     if(Object.keys(d).length)t.dat[x.it.sku]=d;
   }
   S.moves.forEach(m=>{t.moves[m.id]={d:m.d||"",h:m.h||"",t:m.t||"out",sku:m.sku||"",
-    size:+m.size||0,q:+m.q||0,track:m.track||"",order:m.order||"",note:m.note||"",
-    digits:m.digits||"",huyD:m.huy?m.huy.d:"",huyH:m.huy?m.huy.h:""}});
+    size:+m.size||0,q:+m.q||0,track:m.track||"",order:m.order||"",ma2:m.ma2||"",
+    note:m.note||"",digits:m.digits||"",huyD:m.huy?m.huy.d:"",huyH:m.huy?m.huy.h:""}});
   t.cai={low:S.settings.low,prefix:S.settings.prefix||"",sizes:SZ().join(","),
          suagio:S.daSuaGio?1:0};
   return t;
@@ -866,8 +866,8 @@ function fbCay(){
 const fbVeMove=(id,v)=>{
   const m={id,d:String(v.d||""),h:String(v.h||""),t:String(v.t||"out"),
     sku:String(v.sku||"").toLowerCase(),size:+v.size||0,q:+v.q||0,
-    track:String(v.track||""),order:String(v.order||""),note:String(v.note||""),
-    digits:String(v.digits||"")};
+    track:String(v.track||""),order:String(v.order||""),ma2:String(v.ma2||""),
+    note:String(v.note||""),digits:String(v.digits||"")};
   if(v.huyD)m.huy={d:String(v.huyD),h:String(v.huyH||"")};
   return m;
 };
@@ -1173,7 +1173,7 @@ function packState(){
     });
   });
   const moves=S.moves.map(m=>[m.id,m.d,m.h||"",m.t,m.sku,m.size,m.q,m.track||"",
-    m.order||"",m.note||"",m.huy?m.huy.d:"",m.huy?m.huy.h:"",m.digits||""]);
+    m.order||"",m.note||"",m.huy?m.huy.d:"",m.huy?m.huy.h:"",m.digits||"",m.ma2||""]);
   const anh=[];
   S.groups.forEach(g=>g.items.forEach(it=>{if(it.img)anh.push([it.sku,it.img])}));
   /* Số đang đặt cũng phải đi theo, không thì gõ ở điện thoại mà máy tính không thấy.
@@ -1224,7 +1224,8 @@ function unpackState(d){
   const moves=(d.moves||[]).filter(r=>r[0]).map(r=>{
     const m={id:String(r[0]),d:String(r[1]||""),h:String(r[2]||""),t:String(r[3]||"out"),
       sku:String(r[4]||"").toLowerCase(),size:+r[5]||0,q:+r[6]||0,
-      track:String(r[7]||""),order:String(r[8]||""),note:String(r[9]||""),digits:String(r[12]||"")};
+      track:String(r[7]||""),order:String(r[8]||""),note:String(r[9]||""),
+      digits:String(r[12]||""),ma2:String(r[13]||"")};
     if(r[10])m.huy={d:String(r[10]),h:String(r[11]||"")};
     return m;
   });
@@ -1924,8 +1925,9 @@ function daTru(r){
   return S.moves.find(m=>{
     if(m.t!=="out"||m.huy)return false;
     if(String(m.sku||"").toLowerCase()!==sku||+m.size!==+r.size)return false;
-    if(r.track&&m.track&&String(r.track)===String(m.track))return true;
-    if(r.order&&m.order&&String(r.order)===String(m.order))return true;
+    if(r.track&&m.track&&chuanMa(r.track)===chuanMa(m.track))return true;
+    if(r.order&&m.order&&chuanMa(r.order)===chuanMa(m.order))return true;
+    if(r.ma2&&m.ma2&&chuanMa(r.ma2)===chuanMa(m.ma2))return true;
     return false;
   });
 }
@@ -2054,7 +2056,7 @@ function applyOut(){
     if(have<r.qty&&!allowNeg){skip+=r.qty;return}
     c.q=have-r.qty;
     S.moves.push({id:uid(),d:todayKey(),h:now,t:"out",sku:f.it.sku,size:r.size,q:r.qty,
-      order:r.order,track:r.track||"",digits:r.digits||""});
+      order:r.order,ma2:r.ma2||"",track:r.track||"",digits:r.digits||""});
     done+=r.qty;
   });
   save();pending=null;document.getElementById("pdfOut").innerHTML="";
@@ -2078,7 +2080,14 @@ const DOAN={
   sku:[/^\s*sku\s*$/i,/mã\s*sku/i,/\bsku\b/i,/mã\s*sp\b|mã\s*sản\s*phẩm|mã\s*hàng|mã\s*bi[eế]n\s*th[eể]|barcode/i],
   qty:[/^\s*số\s*lượng\s*$/i,/số\s*lượng/i,/^\s*sl\s*$|\bqty\b|quantity/i],
   track:[/mã\s*vận\s*đơn/i,/mã\s*vđ\b|tracking|shipping\s*code/i,/vận\s*đơn/i],
-  order:[/mã\s*đơn/i,/^\s*đơn\s*hàng\s*$/i,/đơn\s*hàng|order/i],
+  /* Sapo có HAI cột mã đơn: "Đơn hàng" là mã của sàn (2607290T08H2EB,
+     585371144781726994) — đây mới là mã dán được khi trả hàng — còn
+     "Mã đơn trên Sapo" (SON56196) là mã nội bộ, sàn không bao giờ có.
+     Nên mã của sàn phải xếp trước. */
+  order:[/^\s*(mã\s*)?đơn\s*hàng\s*$/i,/mã\s*đơn\s*(hàng|trên\s*sàn)/i,
+         /^\s*order\s*(id|code)?\s*$/i,/mã\s*đơn/i,/đơn\s*hàng|order/i],
+  /* mã đơn còn lại (thường là mã nội bộ) — giữ thêm để tra cứu cho đủ */
+  ma2:[/mã\s*đơn/i,/đơn\s*hàng|order/i],
   size:[/^\s*size\s*$/i,/\bsize\b|kích\s*c[oỡ]/i],
   status:[/trạng\s*thái\s*trên\s*sàn/i,/trạng\s*thái\s*đơn/i,/^\s*trạng\s*thái\s*$/i]
 };
@@ -2112,8 +2121,8 @@ function coDuLieu(rows,dau,cot){
 }
 function doanCot(rows,dau){
   const tieuDe=rows[dau].map(v=>String(v||""));
-  const m={sku:-1,size:-1,qty:-1,track:-1,order:-1,status:-1},da=new Set();
-  for(const k of ["sku","qty","track","order","size","status"]){
+  const m={sku:-1,size:-1,qty:-1,track:-1,order:-1,ma2:-1,status:-1},da=new Set();
+  for(const k of ["sku","qty","track","order","size","status","ma2"]){
     for(const re of DOAN[k]){
       let chon=-1;
       for(let i=0;i<tieuDe.length;i++){
@@ -2204,9 +2213,10 @@ function doiBang(gioiHan){
     const q=m.qty>=0?laySo(r[m.qty],false):1;
     const track=m.track>=0?String(r[m.track]||"").trim():"";
     const order=m.order>=0?String(r[m.order]||"").trim():"";
+    const ma2=m.ma2>=0?String(r[m.ma2]||"").trim():"";
     const tt=m.status>=0?String(r[m.status]||""):"";
     const bo=/hu[ỷy]|cancel|ho[àa]n\s*(tr[ảa]|h[àa]ng)|tr[ảa]\s*h[àa]ng/i.test(tt);
-    out.push({sku,size,qty:Math.max(1,isNaN(q)?1:q),track,order,digits:track,bo});
+    out.push({sku,size,qty:Math.max(1,isNaN(q)?1:q),track,order,ma2,digits:track,bo});
     if(gioiHan&&out.filter(x=>!x.bo).length>=gioiHan)break;
   }
   return gioiHan?out.filter(x=>!x.bo).slice(0,gioiHan):out;
@@ -2242,6 +2252,7 @@ function khopO(m,code){
   const c=chuanMa(code);
   if(c.length<6)return "";
   if(chuanMa(m.order)===c)return "don";
+  if(chuanMa(m.ma2)===c)return "don2";
   if(chuanMa(m.track)===c)return "vandon";
   /* dãy số dài in dưới mã vạch. Chỉ dò khi mã đủ dài, không thì một mã ngắn
      lọt vào giữa dãy số của đơn khác là huỷ nhầm. */
@@ -2283,7 +2294,8 @@ function renderHuy(){
     done:'<span class="pill mut">Đã huỷ trước đó</span>',
     lap:'<span class="pill mut">Đã tính ở dòng trên</span>',
     none:'<span class="pill bad">Không tìm thấy đơn xuất</span>'};
-  const nhanKhop={don:'theo <b>mã đơn</b>',vandon:'theo mã vận đơn',day:'theo dãy số trên phiếu'};
+  const nhanKhop={don:'theo <b>mã đơn</b>',don2:'theo mã đơn nội bộ',
+    vandon:'theo mã vận đơn',day:'theo dãy số trên phiếu'};
   const soKhongThay=rows.filter(r=>r.st==="none").length;
   out.innerHTML=`
     <div style="margin-top:16px" class="hr"></div>
@@ -2293,7 +2305,7 @@ function renderHuy(){
       <tbody>${rows.map(r=>`<tr>
         <td><code>${esc(r.code)}</code></td>
         <td><span class="note">${r.m?(nhanKhop[r.o]||"—"):"—"}</span></td>
-        <td><code>${esc(r.m?(r.m.order||"—"):"—")}</code></td>
+        <td><code>${esc(r.m?(r.m.order||"—"):"—")}</code>${r.m&&r.m.ma2?`<br><span class="note">${esc(r.m.ma2)}</span>`:""}</td>
         <td><code>${esc(r.m?(r.m.track||"—"):"—")}</code></td>
         <td>${r.m?`<code>${esc(r.m.sku)}</code>`:"—"}</td>
         <td class="n">${r.m?r.m.size:"–"}</td><td class="n">${r.m?r.m.q:"–"}</td>
@@ -2355,7 +2367,7 @@ function renderLog(){
   }
   if(logMoNgay===null)logMoNgay={[todayKey()]:true};
   const q=logQ.trim().toLowerCase();
-  const hop=m=>!q||((m.track||"")+" "+(m.order||"")+" "+(m.sku||"")+" "+(m.note||""))
+  const hop=m=>!q||((m.track||"")+" "+(m.order||"")+" "+(m.ma2||"")+" "+(m.sku||"")+" "+(m.note||""))
     .toLowerCase().includes(q);
   const ds=S.moves.filter(hop);
   const info=document.getElementById("logQInfo");
