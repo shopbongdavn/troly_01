@@ -196,6 +196,11 @@ table.list tfoot td{background:var(--sunk);font-weight:640}
 #logFix{background:var(--low-soft,#FFF4E0);border:1px solid var(--low);border-radius:10px;
   padding:12px 14px;margin:0 0 14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
 #logFix[hidden]{display:none}
+#suBox{padding:0 18px 18px}
+#suBox .mucSua{margin-top:14px}
+#suBox table.list td.mui{font-family:var(--mono);font-size:12.5px}
+#suBox .tu{color:var(--ink3);text-decoration:line-through}
+#suBox .den{font-weight:700}
 table.list tr.ngay td{background:var(--sunk);font-weight:680;cursor:pointer;white-space:normal}
 table.list tr.ngay .dongngay{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:baseline;
   justify-content:space-between;position:sticky;left:0;max-width:calc(100vw - 76px)}
@@ -281,6 +286,7 @@ table.list tr.huy code{text-decoration:line-through}
   </div>
   <div class="gscroll" id="board"></div>
   <div class="gfoot noprint" id="gfoot"></div>
+  <div class="noprint" id="suBox"></div>
 </section>
 
 <section class="card" data-tab="xuat">
@@ -397,7 +403,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="4.1", APP_TEN="đọc được cả phiếu Viettel Post, không sót tờ nào";
+const APP_VER="4.2", APP_TEN="lịch sử sửa tồn và khoá N, trả về được";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -815,7 +821,7 @@ function seed(){
       mk("ij-f50tf-t","Tím TF",{42:5},[40,41]),
       mk("ij-f50tf-c","Cam TF",{},[])
     ]}],
-    moves:[],draft:{},ver:0,daSuaGio:1,settings:Object.assign({},DEFAULTS)
+    moves:[],draft:{},sua:[],ver:0,daSuaGio:1,settings:Object.assign({},DEFAULTS)
   };
 }
 let S=load();
@@ -851,6 +857,33 @@ const SZ=()=>S.settings.sizes;
 const items=()=>S.groups.flatMap(g=>g.items.map(it=>({g,it})));
 const findSku=sku=>items().find(x=>x.it.sku.toLowerCase()===String(sku).toLowerCase());
 function cellOf(it,s){if(!it.sizes[s])it.sizes[s]={q:0,lock:false};return it.sizes[s]}
+/* ═══════════ lịch sử sửa tồn và khoá N ═══════════
+   Sửa tồn thực tế và bật/tắt khoá không đi qua nhật ký xuất nhập, nên trước
+   đây gõ nhầm là mất luôn số cũ. Nay mỗi lần đổi ghi lại giá trị trước và sau
+   để xem lại và trả về được. Gõ liên tiếp vào cùng một ô trong vòng 2 phút thì
+   gộp làm một dòng, không thì gõ "45" đẻ ra hai dòng 4 rồi 45. */
+const SUA_TOI_DA=600;
+function ghiSua(it,size,tu,den,loai){
+  if(tu===den)return;
+  S.sua=S.sua||[];
+  const nay=new Date(),d=todayKey(),h=nay.toTimeString().slice(0,8);
+  const cuoi=S.sua[0];
+  if(cuoi&&cuoi.sku===it.sku&&+cuoi.size===+size&&cuoi.loai===loai&&
+     cuoi.d===d&&nay-new Date(d+"T"+(cuoi.h||"00:00:00"))<120000){
+    if(cuoi.tu===den){S.sua.shift();return}   /* gõ tới gõ lui về chỗ cũ */
+    cuoi.den=den;cuoi.h=h;return;
+  }
+  S.sua.unshift({id:uid(),d,h,sku:it.sku,size:+size,loai,tu,den});
+  if(S.sua.length>SUA_TOI_DA)S.sua.length=SUA_TOI_DA;
+}
+/** Trả một dòng về giá trị trước đó. */
+function traSua(r){
+  const x=findSku(r.sku);if(!x)return false;
+  const c=cellOf(x.it,+r.size),o=oVaoO(r.tu);
+  c.q=o.q;c.lock=o.lock;
+  return true;
+}
+
 /* Ô khoá N vẫn có thể còn hàng thật trong kho — khoá chỉ có nghĩa là bên Ijomi
    hết, không đặt thêm được. Nên chỗ lưu phải mang cả hai:
      5    = không khoá, còn 5      N   = khoá, còn 0
@@ -887,7 +920,7 @@ function setFb(msg){const m=document.getElementById("fbMsg");if(m)m.textContent=
 
 /* --- đổi qua đổi lại giữa dữ liệu trong máy và cây trên Firebase --- */
 function fbCay(){
-  const t={nhom:{},mh:{},kho:{},dat:{},anh:{},moves:{},cai:{}};
+  const t={nhom:{},mh:{},kho:{},dat:{},anh:{},moves:{},sua:{},cai:{}};
   S.groups.forEach((g,i)=>{
     t.nhom[g.id]={ten:g.ten||"",tt:i};
     g.items.forEach((it,j)=>{
@@ -906,6 +939,9 @@ function fbCay(){
   S.moves.forEach(m=>{t.moves[m.id]={d:m.d||"",h:m.h||"",t:m.t||"out",sku:m.sku||"",
     size:+m.size||0,q:+m.q||0,track:m.track||"",order:m.order||"",ma2:m.ma2||"",
     note:m.note||"",digits:m.digits||"",huyD:m.huy?m.huy.d:"",huyH:m.huy?m.huy.h:""}});
+  (S.sua||[]).forEach((r,i)=>{t.sua[r.id]={d:r.d||"",h:r.h||"",sku:r.sku||"",
+    size:+r.size||0,loai:r.loai||"ton",tu:String(r.tu==null?"":r.tu),
+    den:String(r.den==null?"":r.den),tt:i}});
   t.cai={low:S.settings.low,prefix:S.settings.prefix||"",sizes:SZ().join(","),
          suagio:S.daSuaGio?1:0};
   return t;
@@ -940,6 +976,8 @@ function fbVeS(t){
   S.groups=gs;
   S.moves=Object.keys(t.moves||{}).map(id=>fbVeMove(id,t.moves[id]||{}))
     .sort((a,b)=>(a.d+a.h)<(b.d+b.h)?1:-1);
+  S.sua=Object.keys(t.sua||{}).map(id=>Object.assign({id},t.sua[id]))
+    .sort((a,b)=>(+a.tt||0)-(+b.tt||0));
   const dr={};
   const dat=t.dat||{};
   for(const sku in dat)for(const z in dat[sku]){
@@ -961,6 +999,12 @@ function fbDatLa(m){
       if(v===null||!(+v>0))delete d[+a[2]];else d[+a[2]]=Math.round(+v);
     }else if(a[0]==="anh"){
       const x=findSku(a[1]);if(x)x.it.img=v===null?"":String(v);
+    }else if(a[0]==="sua"){
+      S.sua=S.sua||[];
+      const i=S.sua.findIndex(r=>r.id===a[1]);
+      if(v===null){if(i>=0)S.sua.splice(i,1);continue}
+      const r=Object.assign({id:a[1]},v);
+      if(i>=0)S.sua[i]=r;else S.sua.unshift(r);
     }else if(a[0]==="moves"){
       const i=S.moves.findIndex(m2=>m2.id===a[1]);
       if(v===null){if(i>=0)S.moves.splice(i,1);continue}
@@ -988,7 +1032,7 @@ function fbDatLa(m){
   }
 }
 /* Độ sâu của "lá" trong từng nhánh — quyết định cái gì gửi riêng được. */
-const FB_SAU={nhom:2,mh:2,kho:3,dat:3,anh:2,moves:2,cai:1};
+const FB_SAU={nhom:2,mh:2,kho:3,dat:3,anh:2,moves:2,sua:2,cai:1};
 function fbLa(t){
   const out={};
   for(const k in t){
@@ -1236,7 +1280,9 @@ function packState(){
   }
   return {sizes,kho,moves,anh,
     cai:{low:S.settings.low,prefix:S.settings.prefix,dathang:JSON.stringify(dat),
-         suagio:S.daSuaGio?1:0}};
+         suagio:S.daSuaGio?1:0,
+         sua:JSON.stringify((S.sua||[]).slice(0,200).map(r=>
+           [r.id,r.d,r.h,r.sku,r.size,r.loai,r.tu,r.den]))}};
 }
 /** Đổi danh sách số đặt (theo mã SKU) về dạng khoá theo mã nội bộ mà giao diện dùng. */
 function draftTuSku(dat,groups){
@@ -1278,7 +1324,11 @@ function unpackState(d){
   });
   let dat=[];
   try{dat=JSON.parse((d.cai&&d.cai.dathang)||"[]")}catch(e){}
-  return {groups,moves,sizes,cai:d.cai||{},draft:draftTuSku(dat,groups)};
+  let sua=[];
+  try{sua=JSON.parse((d.cai&&d.cai.sua)||"[]").map(r=>({id:String(r[0]),d:String(r[1]||""),
+    h:String(r[2]||""),sku:String(r[3]||""),size:+r[4]||0,loai:String(r[5]||"ton"),
+    tu:String(r[6]==null?"":r[6]),den:String(r[7]==null?"":r[7])}))}catch(e){}
+  return {groups,moves,sizes,sua,cai:d.cai||{},draft:draftTuSku(dat,groups)};
 }
 
 /** Đưa dữ liệu tải về vào máy. Chỉ gọi khi máy KHÔNG còn gì nợ chưa đẩy. */
@@ -1287,6 +1337,7 @@ function nhanVe(j,u){
   if(u.cai.low!==undefined&&u.cai.low!=="")S.settings.low=+u.cai.low||0;
   if(u.cai.prefix!==undefined)S.settings.prefix=String(u.cai.prefix||"");
   if(+u.cai.suagio)S.daSuaGio=1;
+  S.sua=u.sua||[];
   S.ver=j.ver||0;S.draft=u.draft||{};
   daDayToi=soLanSua;suaKhac=false;    /* đã lấy bản của Sheets: không còn nợ gì */
   saveNow();renderAll();hideConflict();
@@ -1637,7 +1688,7 @@ function renderBoard(){
       </tr>`).join("")}</tbody>
     </table>`).join("");
   ghimCotAnh();
-  renderFoot();renderStats();demTab();
+  renderFoot();renderSua();renderStats();demTab();
 }
 /** Bảng co giãn nên bề rộng cột ảnh không cố định — đo thật rồi ghim cột SKU theo đó. */
 function ghimCotAnh(){
@@ -1668,6 +1719,47 @@ let chiHienDat=false;
    Ảnh sản phẩm giữ lại vì đó là cách nhận ra mã nhanh nhất khi không có chữ. */
 const manHep=()=>innerWidth<=820;
 const gonDat=()=>mode==="order"&&manHep();
+let hienSua=false;
+function renderSua(){
+  const box=document.getElementById("suBox");
+  if(!box)return;
+  if(mode!=="edit"&&mode!=="lock"){box.innerHTML="";return}
+  const ds=(S.sua||[]);
+  if(!ds.length){
+    box.innerHTML=`<p class="note" style="padding-top:12px">Chưa có lần sửa nào.
+      Sửa tồn hoặc bật/tắt khoá N sẽ được ghi lại ở đây để xem lại và trả về.</p>`;
+    return;
+  }
+  const hien=hienSua?ds.slice(0,120):ds.slice(0,8);
+  const ten=sku=>{const x=findSku(sku);return x?(x.it.ten||""):""};
+  const oChu=v=>v===""||v==null?"–":String(v);
+  box.innerHTML=`<div class="mucSua">
+    <div class="bar" style="padding:0 0 8px">
+      <b style="font-size:13.5px">Lịch sử sửa tồn &amp; khoá N</b>
+      <span class="note">${ds.length} lần · mới nhất lên đầu</span>
+      <button class="btn sm" id="suMo">${hienSua?"Thu gọn":"Xem tất cả"}</button>
+      <button class="btn sm warn" id="suXoa">Xoá lịch sử</button>
+    </div>
+    <div class="gscroll"><table class="list"><thead><tr>
+      <th>Ngày</th><th>Giờ</th><th>Mã SKU</th><th class="n">Size</th>
+      <th>Loại</th><th class="n">Trước</th><th class="n">Sau</th><th class="noprint"></th></tr></thead>
+      <tbody>${hien.map(r=>`<tr>
+        <td class="num">${esc(r.d)}</td><td class="num">${esc((r.h||"").slice(0,5))}</td>
+        <td><code>${esc(r.sku)}</code>${ten(r.sku)?` <span class="note">${esc(ten(r.sku))}</span>`:""}</td>
+        <td class="n">${r.size}</td>
+        <td>${r.loai==="khoa"?'<span class="pill bad">Khoá N</span>':'<span class="pill mut">Sửa tồn</span>'}</td>
+        <td class="n mui"><span class="tu">${esc(oChu(r.tu))}</span></td>
+        <td class="n mui"><span class="den">${esc(oChu(r.den))}</span></td>
+        <td class="noprint">
+          <button class="btn sm" data-suatra="${r.id}" title="Trả riêng dòng này về ${esc(oChu(r.tu))}">↶</button>
+          <button class="btn sm warn" data-suamoc="${r.id}" title="Trả kho về đúng lúc trước lần sửa này">⏮</button>
+        </td></tr>`).join("")}
+      </tbody></table></div>
+    <p class="note" style="margin:8px 0 0">↶ trả riêng một dòng · ⏮ trả kho về đúng lúc
+      <b>trước</b> lần sửa đó, gồm luôn mọi lần sửa sau nó. Chỉ đụng tới tồn và khoá N,
+      không đụng nhật ký xuất nhập.</p>
+  </div>`;
+}
 function renderFoot(){
   const f=document.getElementById("gfoot");
   if(mode==="order"){
@@ -2557,7 +2649,12 @@ document.addEventListener("click",async e=>{
   }
   if(d.lock){
     const [pid,s]=d.lock.split(":"),x=items().find(v=>v.it.id===pid);
-    if(x){const c=cellOf(x.it,+s);c.lock=!c.lock;save();renderBoard()}
+    if(x){
+      const c=cellOf(x.it,+s),tu=oRaChu(c);
+      c.lock=!c.lock;
+      ghiSua(x.it,+s,tu,oRaChu(c),"khoa");
+      save();renderBoard();
+    }
     return;
   }
   if(d.del){
@@ -2601,6 +2698,34 @@ document.addEventListener("click",async e=>{
     if(fbOn()){if(fbNo())fbDay();else fbNghe();return}
     if(!syncOn()){toast("Chưa nối kho chung — kéo xuống mục Cài đặt");return}
     syncPull(false);return;
+  }
+  if(id==="suMo"){hienSua=!hienSua;renderSua();return}
+  if(id==="suXoa"){
+    if(confirm(`Xoá toàn bộ ${(S.sua||[]).length} dòng lịch sử sửa?\n\nTồn kho giữ nguyên, chỉ mất phần xem lại.`)){
+      S.sua=[];save();renderSua();toast("Đã xoá lịch sử sửa");
+    }
+    return;
+  }
+  if(d.suatra){
+    const i=(S.sua||[]).findIndex(r=>r.id===d.suatra);
+    if(i<0)return;
+    const r=S.sua[i];
+    if(!confirm(`Trả ${r.sku} size ${r.size} về ${r.tu||"–"}?`))return;
+    if(traSua(r))S.sua.splice(i,1);
+    save();renderBoard();toast("Đã trả về "+(r.tu||"–"));
+    return;
+  }
+  if(d.suamoc){
+    const i=(S.sua||[]).findIndex(r=>r.id===d.suamoc);
+    if(i<0)return;
+    const r=S.sua[i];
+    if(!confirm(`Trả kho về đúng lúc trước ${r.d} ${(r.h||"").slice(0,5)}?\n\n`
+      +`${i+1} lần sửa sau mốc đó sẽ được trả lại. Tồn hiện tại của mấy ô đó sẽ mất.`))return;
+    /* trả từ mới nhất ngược về mốc, nên ô nào sửa nhiều lần cuối cùng vẫn ra giá trị cũ nhất */
+    for(let k=0;k<=i;k++)traSua(S.sua[k]);
+    S.sua.splice(0,i+1);
+    save();renderBoard();toast(`Đã trả ${i+1} lần sửa về như trước`);
+    return;
   }
   if(id==="fixGio"){
     const n=lechNgay(false);
@@ -2683,12 +2808,16 @@ document.addEventListener("input",e=>{
   const t=e.target,d=t.dataset;
   if(d.q){
     const [pid,s]=d.q.split(":"),x=items().find(v=>v.it.id===pid);
-    if(x){cellOf(x.it,+s).q=Math.max(0,+t.value||0);save();
+    if(x){
+      const c=cellOf(x.it,+s),tu=oRaChu(c);
+      c.q=Math.max(0,+t.value||0);
+      ghiSua(x.it,+s,tu,oRaChu(c),"ton");
+      save();
       const row=t.closest("tr");
       if(row)row.querySelector("td.tot").textContent=totItem(x.it);
       const th=t.closest("table").querySelector("th.sum");
       if(th)th.textContent=totGroup(x.g);
-      renderStats();}
+      renderStats();renderSua();}   /* lịch sử nằm dưới bảng nên vẽ lại không mất chỗ đang gõ */
     return;
   }
   if(d.o){
