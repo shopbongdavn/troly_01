@@ -397,7 +397,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="4.0", APP_TEN="nhật ký giữ đủ mã sàn, mã Sapo và mã vận đơn";
+const APP_VER="4.1", APP_TEN="đọc được cả phiếu Viettel Post, không sót tờ nào";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -437,13 +437,22 @@ const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",
 /* ═══════════ đọc PDF phiếu gửi — chỉ dùng API sẵn có của trình duyệt ═══════════ */
 const L=u8=>{let s="";const C=8192;for(let i=0;i<u8.length;i+=C)s+=String.fromCharCode.apply(null,u8.subarray(i,i+C));return s};
 const B=str=>Uint8Array.from(str,c=>c.charCodeAt(0)&255);
+/* Đọc từng khúc chứ không chờ cả cục. File phiếu của sàn đôi khi có luồng bị
+   cụt vài trăm byte cuối — chờ cả cục thì hỏng một chỗ là mất trắng cả trang,
+   còn đọc dần thì giữ được phần đã bung, thường vẫn đủ chữ để lấy mã. */
 async function inflate(bytes){
   for(const fmt of ["deflate","deflate-raw"]){
+    const cs=[];let n=0;
     try{
-      const ds=new DecompressionStream(fmt);
-      const buf=await new Response(new Blob([bytes]).stream().pipeThrough(ds)).arrayBuffer();
-      if(buf.byteLength)return new Uint8Array(buf);
+      const rd=new Blob([bytes]).stream().pipeThrough(new DecompressionStream(fmt)).getReader();
+      for(;;){
+        let x;
+        try{x=await rd.read()}catch(e){break}   /* cụt giữa chừng: giữ phần đã có */
+        if(x.done)break;
+        cs.push(x.value);n+=x.value.length;
+      }
     }catch(e){}
+    if(n){const o=new Uint8Array(n);let k=0;for(const c of cs){o.set(c,k);k+=c.length}return o}
   }
   return null;
 }
@@ -566,20 +575,58 @@ async function pdfPages(u8){
   }
   return pages;
 }
-/* Mã vận đơn được in lặp 6 lần dưới mã vạch nên dính thành một chuỗi số dài.
-   Dò chu kỳ lặp để tách ra, rồi chọn đúng pha bằng chỗ mã được in riêng ở nơi khác. */
+/* Hai kiểu phiếu in mã vận đơn khác nhau:
+   - J&T: in lặp 6 lần dưới mã vạch nên dính thành một chuỗi số rất dài,
+     phải dò chu kỳ lặp mới tách ra được.
+   - Viettel Post: cùng một dãy số in rời ra nhiều chỗ trên tờ phiếu, và mã
+     thật còn có tiền tố hãng ở đầu (VTPVN9041107822, SPXVN0669342518…).
+   Làm cả hai cách, cách nào ra thì lấy. */
 function waybillOf(txt){
-  const runs=(txt.replace(/\s/g,"").match(/\d{6,}/g)||[]);
-  const long=runs.slice().sort((a,b)=>b.length-a.length)[0]||"";
-  const cands=[];
-  for(let p=10;p<=14;p++)for(let o=0;o+p*3<=long.length;o++){
-    const u=long.substr(o,p);let k=1;
-    while(long.substr(o+k*p,p)===u)k++;
-    if(k>=3)cands.push({u,k});
+  const t=txt.replace(/\s/g,"");
+  const runs=(t.match(/\d{6,}/g)||[]);
+  let track="";
+  /* cách 1 — cùng một dãy in rời nhiều lần */
+  const dem={};
+  runs.forEach(r=>{if(r.length>=10&&r.length<=16)dem[r]=(dem[r]||0)+1});
+  let nhieu=0;
+  for(const k in dem)if(dem[k]>nhieu||(dem[k]===nhieu&&k.length>track.length)){track=k;nhieu=dem[k]}
+  if(nhieu<3)track="";
+  /* cách 2 — in liền thành một chuỗi dài, dò chu kỳ */
+  if(!track){
+    const long=runs.slice().sort((a,b)=>b.length-a.length)[0]||"";
+    const cands=[];
+    for(let p=10;p<=14;p++)for(let o=0;o+p*3<=long.length;o++){
+      const u=long.substr(o,p);let k=1;
+      while(long.substr(o+k*p,p)===u)k++;
+      if(k>=3)cands.push({u,k});
+    }
+    const anchored=cands.filter(c=>runs.some(r=>r!==long&&r.startsWith(c.u)));
+    const pick=(anchored.length?anchored:cands).sort((a,b)=>b.k-a.k||b.u.length-a.u.length)[0];
+    if(pick)track=pick.u;
   }
-  const anchored=cands.filter(c=>runs.some(r=>r!==long&&r.startsWith(c.u)));
-  const pick=(anchored.length?anchored:cands).sort((a,b)=>b.k-a.k||b.u.length-a.u.length)[0];
-  return {track:pick?pick.u:"",digits:runs.join(" ")};
+  /* Mã thật có tiền tố hãng ngay trước, file trả hàng của sàn cũng ghi kèm tiền tố
+     nên phải giữ. Dùng danh sách hãng chứ không đoán theo chữ hoa, không thì nuốt
+     luôn chữ cái của từ đứng trước ("KHÔNG TIỀN MẶT" + VTPVN… ra TVTPVN…). */
+  if(track){
+    const m=new RegExp("(VTPVN|SPXVN|GHTKVN|GHNVN|JTVN|NJVVN|VNPVN|BESTVN)"+track).exec(t);
+    if(m)track=m[1]+track;
+  }
+  return {track,digits:runs.join(" ")};
+}
+/* Mã đơn in liền ngay trước ngày giờ nên dãy số bị dính:
+   "OrderID:5853957669344721232026-08-06" — đúng ra chỉ là 585395766934472123.
+   Trên tờ phiếu mã đó còn được in riêng một chỗ nữa, lấy chỗ đó làm chuẩn. */
+function layMaDon(t){
+  const m=/OrderID:?(\d{6,})/.exec(t);
+  if(!m)return "";
+  const d=m[1];
+  if(d.length<=19)return d;
+  const runs=(t.match(/\d{6,}/g)||[]);
+  for(let n=19;n>=14;n--){
+    const p=d.slice(0,n);
+    if(runs.some(r=>r===p))return p;
+  }
+  return d.slice(0,18);
 }
 /* Bóc SKU + size + SL. Trên phiếu J&T: "…Tím MG,40IJ-f50mg-t-401Qty Total: 1" */
 let lechQty=0;      /* số tờ phiếu mà SL đọc ra không khớp dòng "Qty Total" */
@@ -596,7 +643,7 @@ async function readLabels(u8){
   for(const raw of pages){
     /* bỏ hết dấu cách để mã SKU không bị ngắt quãng — mốc tìm kiếm cũng bỏ dấu cách theo */
     const t=raw.replace(/\s/g,"");
-    const order=(/OrderID:?(\d{6,})/.exec(t)||[])[1]||"";
+    const order=layMaDon(t);
     const wb=waybillOf(raw);
     const head=t.indexOf("SellerSKU");
     const seg=head>=0?t.slice(head+9):t;
@@ -2253,7 +2300,11 @@ function khopO(m,code){
   if(c.length<6)return "";
   if(chuanMa(m.order)===c)return "don";
   if(chuanMa(m.ma2)===c)return "don2";
-  if(chuanMa(m.track)===c)return "vandon";
+  const vd=chuanMa(m.track);
+  if(vd===c)return "vandon";
+  /* dán thiếu hoặc thừa tiền tố hãng vẫn nhận: VTPVN9041107822 <-> 9041107822 */
+  const boDau=x=>x.replace(/^[A-Z]+/,"");
+  if(vd&&boDau(vd)&&boDau(vd)===boDau(c))return "vandon";
   /* dãy số dài in dưới mã vạch. Chỉ dò khi mã đủ dài, không thì một mã ngắn
      lọt vào giữa dãy số của đơn khác là huỷ nhầm. */
   if(c.length>=10&&/^\d+$/.test(c)&&(m.digits||"").replace(/\D/g,"").includes(c))return "day";
