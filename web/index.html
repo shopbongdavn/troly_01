@@ -407,7 +407,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="4.4", APP_TEN="nhật ký gom theo từng lần nạp, ghi rõ TikTok hay Sapo";
+const APP_VER="4.5", APP_TEN="không tự bỏ đơn nữa, tờ nào đáng ngờ thì báo số tờ";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -639,10 +639,11 @@ function layMaDon(t){
   return d.slice(0,18);
 }
 /* Bóc SKU + size + SL. Trên phiếu J&T: "…Tím MG,40IJ-f50mg-t-401Qty Total: 1" */
-let lechQty=0;      /* số tờ phiếu mà SL đọc ra không khớp dòng "Qty Total" */
+let lechQty=0,lechTrang=[];   /* mấy tờ phiếu mà SL đọc ra không khớp dòng "Qty Total" */
 async function readLabels(u8){
   const pages=await pdfPages(u8),rows=[];
-  lechQty=0;
+  lechQty=0;lechTrang=[];
+  let soTrang=0;
   const pfx=(S.settings.prefix||"").split(/[,;\s]+/).map(v=>v.replace(/[^\w-]/g,"")).filter(Boolean);
   /* Không dùng \b: trên phiếu mã dính liền số phía trước, ví dụ "TímMG,40IJ-f50mg-t-40".
      Mã phải dừng ngay sau cụm số size(+SL). Nếu cho nuốt tiếp chữ cái thì tờ phiếu
@@ -651,6 +652,7 @@ async function readLabels(u8){
     ? new RegExp("(?:"+pfx.join("|")+")(?:-[A-Za-z0-9]+)*-\\d{2,5}","gi")
     : /[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)*-\d{2,5}/g;
   for(const raw of pages){
+    soTrang++;
     /* bỏ hết dấu cách để mã SKU không bị ngắt quãng — mốc tìm kiếm cũng bỏ dấu cách theo */
     const t=raw.replace(/\s/g,"");
     const order=layMaDon(t);
@@ -676,13 +678,12 @@ async function readLabels(u8){
     /* Số lượng lấy từ mấy chữ số dính sau size trên mã. Tờ phiếu chỉ có một mã
        thì tin "Qty Total" hơn — đơn mua 2 đôi cùng size không bị đếm thành 1. */
     if(cuaTrang.length===1&&tong>0)cuaTrang[0].qty=tong;
-    /* Lưới đỡ chung: bắt ra nhiều hơn dòng "Qty Total" nghĩa là có chữ trong tên
-       hàng bị nhận nhầm thành mã. Mã thật in sau cùng, ngay trước "Qty Total",
-       nên bỏ dần từ đầu cho tới khi khớp. */
-    if(tong>0&&cuaTrang.length>1){
-      while(cuaTrang.length>1&&cuaTrang.reduce((a,x)=>a+x.qty,0)>tong)cuaTrang.shift();
+    /* Lệch so với dòng "Qty Total" thì BÁO chứ không tự bỏ bớt. Bỏ bớt trong im
+       lặng có lúc cắt nhầm đơn thật, mà thiếu đơn thì khó phát hiện hơn thừa đơn
+       nhiều. Ghi luôn số tờ để dò lại cho nhanh. */
+    if(!cuaTrang.length||(tong>0&&cuaTrang.reduce((a,x)=>a+x.qty,0)!==tong)){
+      lechQty++;lechTrang.push(soTrang);
     }
-    if(tong>0&&cuaTrang.length&&cuaTrang.reduce((a,x)=>a+x.qty,0)!==tong)lechQty++;
     rows.push(...cuaTrang);
   }
   return rows;
@@ -2049,13 +2050,13 @@ async function handleFiles(files){
   if(!list.length){toast("Chỉ nhận file PDF, Excel hoặc CSV");return}
   const out=document.getElementById("pdfOut");
   out.innerHTML='<p class="empty">Đang đọc file…</p>';
-  let rows=[],bad=0,lech=0;
+  let rows=[],bad=0,lech=0,lechTo=[];
   for(const f of list){
     try{
       const u8=new Uint8Array(await f.arrayBuffer());
       const r=await readLabels(u8);
       if(!r.length)bad++;
-      lech+=lechQty;
+      lech+=lechQty;lechTo=lechTo.concat(lechTrang.map(n=>list.length>1?f.name+" tờ "+n:"tờ "+n));
       rows=rows.concat(r.map(x=>Object.assign(x,{file:f.name})));
     }catch(e){bad++}
   }
@@ -2071,7 +2072,7 @@ async function handleFiles(files){
   rows.forEach(r=>{const k=r.sku+"|"+r.size+"|"+(r.track||r.order||"");
     if(map[k])map[k].qty+=r.qty;else map[k]=Object.assign({},r)});
   pending=Object.values(map).sort((a,b)=>a.sku.localeCompare(b.sku)||a.size-b.size);
-  pendingMeta={bad,nfile:list.length,lech,ng:"tiktok"};   /* phiếu gửi PDF = đơn TikTok */
+  pendingMeta={bad,nfile:list.length,lech,lechTo,ng:"tiktok"};   /* phiếu gửi PDF = đơn TikTok */
   renderPending();
 }
 /** Đơn này đã trừ kho lần trước chưa? Nhận theo mã vận đơn, không có thì theo mã đơn hàng.
@@ -2088,7 +2089,8 @@ function daTru(r){
   });
 }
 function renderPending(){
-  const bad=pendingMeta.bad,nfile=pendingMeta.nfile,lech=pendingMeta.lech||0;
+  const bad=pendingMeta.bad,nfile=pendingMeta.nfile,lech=pendingMeta.lech||0,
+        lechTo=pendingMeta.lechTo||[];
   const out=document.getElementById("pdfOut");
   if(!pending||!pending.length){out.innerHTML="";return}
   let okQty=0,missQty=0;
@@ -2147,7 +2149,8 @@ function renderPending(){
       <button class="btn" id="clrOut">Bỏ qua</button>
       ${thieu.length?`<button class="btn" id="themThieu">+ Thêm ${thieu.length} mã chưa có vào kho</button>`:""}
       ${trungQty?`<span class="note" style="color:var(--low)">${trungQty} đơn đã trừ kho lần trước, lần này bỏ qua để khỏi trừ hai lần.</span>`:""}
-      ${lech?`<span class="note" style="color:var(--low)">${lech} tờ phiếu có số lượng đọc ra không khớp dòng "Qty Total" — dò lại mấy tờ đó cho chắc.</span>`:""}
+      ${lech?`<span class="note" style="color:var(--low)">${lech} tờ phiếu đọc ra không khớp dòng "Qty Total"
+        — mở file xem lại ${esc(lechTo.slice(0,12).join(", "))}${lechTo.length>12?"…":""}.</span>`:""}
       <label style="display:flex;gap:7px;align-items:center;font-size:13px;width:auto">
         <input type="checkbox" id="negChk" ${allowNeg?"checked":""} style="width:auto">
         Trừ cả dòng không đủ tồn (cho phép tồn âm để đối chiếu sau)</label>
