@@ -403,7 +403,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="4.2", APP_TEN="lịch sử sửa tồn và khoá N, trả về được";
+const APP_VER="4.3", APP_TEN="không đếm nhầm chữ trong tên hàng thành đơn";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -662,12 +662,22 @@ async function readLabels(u8){
       if(!m||!m[1])continue;
       const size=+m[2];
       if(size<20||size>50)continue;
+      /* Tên hàng hay ghi kèm dải size: "…Phối Màu size 38-44 (Tặng Tất)…". Bỏ dấu
+         cách xong thì chữ u cuối từ "Màu" dính vào thành mã giả "usize38-44",
+         đếm thêm một đơn không có thật. Mã hàng thật không bao giờ chứa chữ size. */
+      if(/size/i.test(m[1]))continue;
       cuaTrang.push({sku:m[1].toLowerCase(),size,qty:Math.max(1,+m[3]||1),order,
                      track:wb.track,digits:wb.digits});
     }
     /* Số lượng lấy từ mấy chữ số dính sau size trên mã. Tờ phiếu chỉ có một mã
        thì tin "Qty Total" hơn — đơn mua 2 đôi cùng size không bị đếm thành 1. */
     if(cuaTrang.length===1&&tong>0)cuaTrang[0].qty=tong;
+    /* Lưới đỡ chung: bắt ra nhiều hơn dòng "Qty Total" nghĩa là có chữ trong tên
+       hàng bị nhận nhầm thành mã. Mã thật in sau cùng, ngay trước "Qty Total",
+       nên bỏ dần từ đầu cho tới khi khớp. */
+    if(tong>0&&cuaTrang.length>1){
+      while(cuaTrang.length>1&&cuaTrang.reduce((a,x)=>a+x.qty,0)>tong)cuaTrang.shift();
+    }
     if(tong>0&&cuaTrang.length&&cuaTrang.reduce((a,x)=>a+x.qty,0)!==tong)lechQty++;
     rows.push(...cuaTrang);
   }
