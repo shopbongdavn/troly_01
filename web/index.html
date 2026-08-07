@@ -206,10 +206,14 @@ table.list tr.ngay .dongngay{display:flex;flex-wrap:wrap;gap:4px 14px;align-item
   justify-content:space-between;position:sticky;left:0;max-width:calc(100vw - 76px)}
 table.list tr.ngay:hover td{background:var(--act-soft)}
 table.list tr.ngay .mui{display:inline-block;width:14px;color:var(--ink3)}
+table.list tr.lo td{background:var(--sunk);cursor:pointer;white-space:normal;
+  box-shadow:inset 3px 0 0 var(--act)}
+table.list tr.lo:hover td{background:var(--act-soft)}
+table.list tr.lo .dongngay{padding-left:14px}
 table.list tr.nhom td{cursor:pointer}
 table.list tr.nhom:hover td{background:var(--act-soft)}
-table.list tr.nhom td:first-child{padding-left:26px}
-table.list tr.don td:first-child{padding-left:44px}
+table.list tr.nhom td:first-child{padding-left:40px}
+table.list tr.don td:first-child{padding-left:58px}
 table.list tr.don td{font-size:12.5px;color:var(--ink2)}
 table.list tr.huy td{opacity:.62}
 table.list tr.huy code{text-decoration:line-through}
@@ -403,7 +407,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="4.3", APP_TEN="không đếm nhầm chữ trong tên hàng thành đơn";
+const APP_VER="4.4", APP_TEN="nhật ký gom theo từng lần nạp, ghi rõ TikTok hay Sapo";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -948,7 +952,8 @@ function fbCay(){
   }
   S.moves.forEach(m=>{t.moves[m.id]={d:m.d||"",h:m.h||"",t:m.t||"out",sku:m.sku||"",
     size:+m.size||0,q:+m.q||0,track:m.track||"",order:m.order||"",ma2:m.ma2||"",
-    note:m.note||"",digits:m.digits||"",huyD:m.huy?m.huy.d:"",huyH:m.huy?m.huy.h:""}});
+    note:m.note||"",digits:m.digits||"",lo:m.lo||"",ng:m.ng||"",
+    huyD:m.huy?m.huy.d:"",huyH:m.huy?m.huy.h:""}});
   (S.sua||[]).forEach((r,i)=>{t.sua[r.id]={d:r.d||"",h:r.h||"",sku:r.sku||"",
     size:+r.size||0,loai:r.loai||"ton",tu:String(r.tu==null?"":r.tu),
     den:String(r.den==null?"":r.den),tt:i}});
@@ -960,7 +965,8 @@ const fbVeMove=(id,v)=>{
   const m={id,d:String(v.d||""),h:String(v.h||""),t:String(v.t||"out"),
     sku:String(v.sku||"").toLowerCase(),size:+v.size||0,q:+v.q||0,
     track:String(v.track||""),order:String(v.order||""),ma2:String(v.ma2||""),
-    note:String(v.note||""),digits:String(v.digits||"")};
+    note:String(v.note||""),digits:String(v.digits||""),
+    lo:String(v.lo||""),ng:String(v.ng||"")};
   if(v.huyD)m.huy={d:String(v.huyD),h:String(v.huyH||"")};
   return m;
 };
@@ -1274,7 +1280,8 @@ function packState(){
     });
   });
   const moves=S.moves.map(m=>[m.id,m.d,m.h||"",m.t,m.sku,m.size,m.q,m.track||"",
-    m.order||"",m.note||"",m.huy?m.huy.d:"",m.huy?m.huy.h:"",m.digits||"",m.ma2||""]);
+    m.order||"",m.note||"",m.huy?m.huy.d:"",m.huy?m.huy.h:"",m.digits||"",m.ma2||"",
+    m.lo||"",m.ng||""]);
   const anh=[];
   S.groups.forEach(g=>g.items.forEach(it=>{if(it.img)anh.push([it.sku,it.img])}));
   /* Số đang đặt cũng phải đi theo, không thì gõ ở điện thoại mà máy tính không thấy.
@@ -1328,7 +1335,7 @@ function unpackState(d){
     const m={id:String(r[0]),d:String(r[1]||""),h:String(r[2]||""),t:String(r[3]||"out"),
       sku:String(r[4]||"").toLowerCase(),size:+r[5]||0,q:+r[6]||0,
       track:String(r[7]||""),order:String(r[8]||""),note:String(r[9]||""),
-      digits:String(r[12]||""),ma2:String(r[13]||"")};
+      digits:String(r[12]||""),ma2:String(r[13]||""),lo:String(r[14]||""),ng:String(r[15]||"")};
     if(r[10])m.huy={d:String(r[10]),h:String(r[11]||"")};
     return m;
   });
@@ -2064,7 +2071,7 @@ async function handleFiles(files){
   rows.forEach(r=>{const k=r.sku+"|"+r.size+"|"+(r.track||r.order||"");
     if(map[k])map[k].qty+=r.qty;else map[k]=Object.assign({},r)});
   pending=Object.values(map).sort((a,b)=>a.sku.localeCompare(b.sku)||a.size-b.size);
-  pendingMeta={bad,nfile:list.length,lech};
+  pendingMeta={bad,nfile:list.length,lech,ng:"tiktok"};   /* phiếu gửi PDF = đơn TikTok */
   renderPending();
 }
 /** Đơn này đã trừ kho lần trước chưa? Nhận theo mã vận đơn, không có thì theo mã đơn hàng.
@@ -2196,6 +2203,7 @@ function applyOut(){
   if(!pending)return;
   let done=0,skip=0;
   const now=new Date().toTimeString().slice(0,5);
+  const lo=uid(),ng=pendingMeta.ng||"";   /* cả mớ nạp một lần là một lô, để nhật ký gom lại */
   let bo=0;
   pending.forEach(r=>{
     if(daTru(r)){bo+=r.qty;return}     /* đã trừ lần trước, không trừ lại */
@@ -2205,7 +2213,7 @@ function applyOut(){
     if(have<r.qty&&!allowNeg){skip+=r.qty;return}
     c.q=have-r.qty;
     S.moves.push({id:uid(),d:todayKey(),h:now,t:"out",sku:f.it.sku,size:r.size,q:r.qty,
-      order:r.order,ma2:r.ma2||"",track:r.track||"",digits:r.digits||""});
+      order:r.order,ma2:r.ma2||"",track:r.track||"",digits:r.digits||"",lo,ng});
     done+=r.qty;
   });
   save();pending=null;document.getElementById("pdfOut").innerHTML="";
@@ -2379,7 +2387,7 @@ function dungBang(){
     if(map[k])map[k].qty+=r.qty;else map[k]=Object.assign({},r);
   });
   pending=Object.values(map).sort((a,b)=>a.sku.localeCompare(b.sku)||a.size-b.size);
-  pendingMeta={bad:0,nfile:1};
+  pendingMeta={bad:0,nfile:1,ng:"sapo"};                  /* file Excel/CSV = đơn qua Sapo */
   S.settings.mapCot=Object.assign({},S.mapHienTai);
   save({local:true});
   document.getElementById("mapBox").innerHTML="";
@@ -2506,7 +2514,7 @@ function huyUndo(id){
 /* Một ngày 200-300 đơn nên nhật ký gom ba tầng:
      ngày  →  mã hàng + size  →  từng đơn.
    Mặc định chỉ mở ngày hôm nay, các ngày trước gấp lại cho gọn. */
-let logMoNgay=null,logMoNhom={},logQ="";
+let logMoNgay=null,logMoLo={},logMoNhom={},logQ="";
 function renderLog(){
   const box=document.getElementById("logBox");
   const fix=document.getElementById("logFix");
@@ -2534,17 +2542,28 @@ function renderLog(){
   }
   demTab();
 
-  /* gom theo ngày, rồi trong ngày gom theo mã + size + loại */
+  /* Gom ba tầng: ngày → lô (một lần nạp file hay một lần bấm đặt hàng)
+     → mã hàng + size → từng đơn. Dữ liệu cũ chưa có mã lô thì ghép tạm theo
+     ngày + giờ + loại, vì cả mớ nạp một lần đều mang đúng một giờ phút. */
+  const maLo=m=>m.lo||(m.d+"|"+(m.h||"")+"|"+m.t);
   const ngay={};
   ds.forEach(m=>{
     const d=m.d||"(không rõ ngày)";
-    const n=ngay[d]||(ngay[d]={d,xuat:0,ve:0,huy:0,luot:0,nhom:{},dsNhom:[]});
+    const n=ngay[d]||(ngay[d]={d,xuat:0,ve:0,huy:0,luot:0,lo:{},dsLo:[]});
     n.luot++;
     if(m.huy)n.huy+=m.q; else if(m.t==="out")n.xuat+=m.q; else n.ve+=m.q;
+    const kl=maLo(m);
+    let L=n.lo[kl];
+    if(!L){L=n.lo[kl]={k:kl,h:m.h||"",t:m.t,ng:m.ng||"",q:0,huy:0,don:new Set(),
+                       nhom:{},dsNhom:[]};n.dsLo.push(L)}
+    if(m.h&&m.h<L.h)L.h=m.h;
+    if(!L.ng&&m.ng)L.ng=m.ng;
+    if(m.huy)L.huy+=m.q;else L.q+=m.q;
+    L.don.add(m.order||m.track||m.id);
     const loai=m.huy?"huy":m.t;
     const k=m.sku+"|"+m.size+"|"+loai;
-    let g=n.nhom[k];
-    if(!g){g=n.nhom[k]={sku:m.sku,size:m.size,loai,q:0,don:[]};n.dsNhom.push(g)}
+    let g=L.nhom[k];
+    if(!g){g=L.nhom[k]={sku:m.sku,size:m.size,loai,q:0,don:[]};L.dsNhom.push(g)}
     g.q+=m.q;g.don.push(m);
   });
   const dsNgay=Object.values(ngay).sort((a,b)=>a.d<b.d?1:-1);
@@ -2552,6 +2571,8 @@ function renderLog(){
   const nhan={out:'<span class="pill low">Xuất</span>',
               in:'<span class="pill ok">Đặt về</span>',
               huy:'<span class="pill bad">Đã huỷ</span>'};
+  const NGUON={tiktok:'<span class="pill mut">TikTok</span>',
+               sapo:'<span class="pill mut">Sapo</span>'};
   const THU=["Chủ nhật","Thứ hai","Thứ ba","Thứ tư","Thứ năm","Thứ sáu","Thứ bảy"];
   const tenNgay=d=>{
     if(d===todayKey())return "Hôm nay";
@@ -2564,37 +2585,51 @@ function renderLog(){
     const mo=q?true:!!logMoNgay[n.d];      /* đang tìm thì mở hết cho dễ thấy */
     const tom=[n.xuat?`xuất ${n.xuat} đôi`:"",n.ve?`đặt về ${n.ve} đôi`:"",
                n.huy?`huỷ ${n.huy} đôi`:""].filter(Boolean).join(" · ");
-    /* Một ô chạy hết bề ngang, cho xuống dòng — không thì trên điện thoại
-       phần tổng kết bị đẩy ra ngoài màn hình, phải kéo ngang mới thấy. */
     html+=`<tr class="ngay" data-ngay="${esc(n.d)}"><td colspan="9"><div class="dongngay">
         <span><span class="mui">${mo?"▾":"▸"}</span><b>${esc(n.d)}</b>
           <span class="note" style="margin-left:6px">${tenNgay(n.d)}</span></span>
         <span class="note">${n.luot} lượt${tom?" · "+tom:""}</span>
       </div></td></tr>`;
     if(!mo)continue;
-    n.dsNhom.sort((a,b)=>a.sku<b.sku?-1:a.sku>b.sku?1:a.size-b.size);
-    for(const g of n.dsNhom){
-      const k=n.d+"|"+g.sku+"|"+g.size+"|"+g.loai;
-      const moG=q?true:!!logMoNhom[k];
-      const ten=(findSku(g.sku)||{it:{}}).it.ten||"";
-      html+=`<tr class="nhom${g.loai==="huy"?" huy":""}" data-nhomlog="${esc(k)}"><td colspan="2">
-          <span class="mui">${moG?"▾":"▸"}</span><code>${esc(g.sku)}</code>
-          ${ten?` <span class="note">${esc(ten)}</span>`:""}</td>
-        <td>${nhan[g.loai]}</td><td class="n">size ${g.size}</td>
-        <td class="n"><b>${g.q}</b></td>
-        <td colspan="4"><span class="note">${g.don.length} đơn${moG?"":" — bấm để xem chi tiết"}</span></td></tr>`;
-      if(!moG)continue;
-      g.don.slice().sort((a,b)=>gio(a)<gio(b)?1:-1).forEach(m=>{
-        html+=`<tr class="don${m.huy?" huy":""}">
-          <td class="num">${esc(m.h||"")}</td>
-          <td><code>${esc(m.track||"—")}</code></td>
-          <td>${m.order?"Đơn "+esc(m.order):(m.note||"")}</td>
-          <td class="n">size ${m.size}</td><td class="n">${m.q}</td>
-          <td colspan="3"><span class="note">${m.huy?`hoàn về kho ${esc(m.huy.d)} ${esc(m.huy.h||"")}`:""}</span></td>
-          <td class="noprint">${m.huy
-            ? `<button class="btn sm" data-unhuy="${m.id}" title="Bỏ đánh dấu huỷ">↶</button>`
-            : `<button class="btn sm warn" data-undo="${m.id}" title="Hoàn tác lượt này">✕</button>`}</td></tr>`;
-      });
+    n.dsLo.sort((a,b)=>a.h<b.h?1:a.h>b.h?-1:0);
+    for(const L of n.dsLo){
+      const kL=n.d+"##"+L.k;
+      const moL=q?true:!!logMoLo[kL];
+      const viec=L.t==="out"?"Xuất hàng":"Đặt hàng về kho";
+      const tomL=[L.don.size+" đơn",(L.q+L.huy)+" đôi",L.huy?`${L.huy} đôi đã huỷ`:""]
+        .filter(Boolean).join(" · ");
+      html+=`<tr class="lo" data-lolog="${esc(kL)}"><td colspan="9"><div class="dongngay">
+          <span><span class="mui">${moL?"▾":"▸"}</span>
+            <b class="num">${esc((L.h||"").slice(0,5))}</b>
+            <span style="margin-left:8px">${viec}</span>
+            ${L.ng&&NGUON[L.ng]?" "+NGUON[L.ng]:""}</span>
+          <span class="note">${tomL}</span>
+        </div></td></tr>`;
+      if(!moL)continue;
+      L.dsNhom.sort((a,b)=>a.sku<b.sku?-1:a.sku>b.sku?1:a.size-b.size);
+      for(const g of L.dsNhom){
+        const k=kL+"|"+g.sku+"|"+g.size+"|"+g.loai;
+        const moG=q?true:!!logMoNhom[k];
+        const ten=(findSku(g.sku)||{it:{}}).it.ten||"";
+        html+=`<tr class="nhom${g.loai==="huy"?" huy":""}" data-nhomlog="${esc(k)}"><td colspan="2">
+            <span class="mui">${moG?"▾":"▸"}</span><code>${esc(g.sku)}</code>
+            ${ten?` <span class="note">${esc(ten)}</span>`:""}</td>
+          <td>${nhan[g.loai]}</td><td class="n">size ${g.size}</td>
+          <td class="n"><b>${g.q}</b></td>
+          <td colspan="4"><span class="note">${g.don.length} đơn${moG?"":" — bấm để xem chi tiết"}</span></td></tr>`;
+        if(!moG)continue;
+        g.don.slice().sort((a,b)=>gio(a)<gio(b)?1:-1).forEach(m=>{
+          html+=`<tr class="don${m.huy?" huy":""}">
+            <td class="num">${esc(m.h||"")}</td>
+            <td><code>${esc(m.track||"—")}</code></td>
+            <td>${m.order?"Đơn "+esc(m.order):(m.note||"")}</td>
+            <td class="n">size ${m.size}</td><td class="n">${m.q}</td>
+            <td colspan="3"><span class="note">${m.huy?`hoàn về kho ${esc(m.huy.d)} ${esc(m.huy.h||"")}`:""}</span></td>
+            <td class="noprint">${m.huy
+              ? `<button class="btn sm" data-unhuy="${m.id}" title="Bỏ đánh dấu huỷ">↶</button>`
+              : `<button class="btn sm warn" data-undo="${m.id}" title="Hoàn tác lượt này">✕</button>`}</td></tr>`;
+        });
+      }
     }
   }
   box.innerHTML=`<div class="gscroll"><table class="list">
@@ -2633,6 +2668,8 @@ document.addEventListener("click",async e=>{
   /* Phải nằm trên chỗ "không phải nút thì thôi" bên dưới, vì đây là bấm vào cả dòng. */
   const rn=t.closest("[data-ngay]");
   if(rn&&!btn){logMoNgay[rn.dataset.ngay]=!logMoNgay[rn.dataset.ngay];renderLog();return}
+  const rl=t.closest("[data-lolog]");
+  if(rl&&!btn){logMoLo[rl.dataset.lolog]=!logMoLo[rl.dataset.lolog];renderLog();return}
   const rg=t.closest("[data-nhomlog]");
   if(rg&&!btn){logMoNhom[rg.dataset.nhomlog]=!logMoNhom[rg.dataset.nhomlog];renderLog();return}
   if(t.id==="imgModal"){closeImg();return}
@@ -2778,7 +2815,7 @@ document.addEventListener("click",async e=>{
     const n=draftTotal();
     if(!n)return;
     if(!confirm(`Xác nhận đặt ${n} đôi và cộng thẳng vào tồn kho?`))return;
-    const now=new Date().toTimeString().slice(0,5);
+    const now=new Date().toTimeString().slice(0,5),lo=uid();
     for(const pid in S.draft){
       const x=items().find(v=>v.it.id===pid);if(!x)continue;
       for(const s in S.draft[pid]){
@@ -2786,7 +2823,7 @@ document.addEventListener("click",async e=>{
         const c=cellOf(x.it,+s);
         if(c.lock)continue;
         c.q=(c.q||0)+q;
-        S.moves.push({id:uid(),d:todayKey(),h:now,t:"in",sku:x.it.sku,size:+s,q,note:"Đặt hàng"});
+        S.moves.push({id:uid(),d:todayKey(),h:now,t:"in",sku:x.it.sku,size:+s,q,note:"Đặt hàng",lo});
       }
     }
     S.draft={};chiHienDat=false;save();renderBoard();renderLog();toast(`Đã đặt ${n} đôi và cộng vào tồn`);return;
