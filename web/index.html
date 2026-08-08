@@ -407,7 +407,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="4.5", APP_TEN="không tự bỏ đơn nữa, tờ nào đáng ngờ thì báo số tờ";
+const APP_VER="4.6", APP_TEN="đối chiếu số tờ phiếu với số đơn đọc ra";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -639,10 +639,10 @@ function layMaDon(t){
   return d.slice(0,18);
 }
 /* Bóc SKU + size + SL. Trên phiếu J&T: "…Tím MG,40IJ-f50mg-t-401Qty Total: 1" */
-let lechQty=0,lechTrang=[];   /* mấy tờ phiếu mà SL đọc ra không khớp dòng "Qty Total" */
+let lechQty=0,lechTrang=[],soTo=0;   /* mấy tờ phiếu đáng ngờ, và tổng số tờ đọc được */
 async function readLabels(u8){
   const pages=await pdfPages(u8),rows=[];
-  lechQty=0;lechTrang=[];
+  lechQty=0;lechTrang=[];soTo=pages.length;
   let soTrang=0;
   const pfx=(S.settings.prefix||"").split(/[,;\s]+/).map(v=>v.replace(/[^\w-]/g,"")).filter(Boolean);
   /* Không dùng \b: trên phiếu mã dính liền số phía trước, ví dụ "TímMG,40IJ-f50mg-t-40".
@@ -2050,13 +2050,14 @@ async function handleFiles(files){
   if(!list.length){toast("Chỉ nhận file PDF, Excel hoặc CSV");return}
   const out=document.getElementById("pdfOut");
   out.innerHTML='<p class="empty">Đang đọc file…</p>';
-  let rows=[],bad=0,lech=0,lechTo=[];
+  let rows=[],bad=0,lech=0,lechTo=[],tongTo=0;
   for(const f of list){
     try{
       const u8=new Uint8Array(await f.arrayBuffer());
       const r=await readLabels(u8);
       if(!r.length)bad++;
-      lech+=lechQty;lechTo=lechTo.concat(lechTrang.map(n=>list.length>1?f.name+" tờ "+n:"tờ "+n));
+      lech+=lechQty;tongTo+=soTo;
+      lechTo=lechTo.concat(lechTrang.map(n=>list.length>1?f.name+" tờ "+n:"tờ "+n));
       rows=rows.concat(r.map(x=>Object.assign(x,{file:f.name})));
     }catch(e){bad++}
   }
@@ -2072,7 +2073,7 @@ async function handleFiles(files){
   rows.forEach(r=>{const k=r.sku+"|"+r.size+"|"+(r.track||r.order||"");
     if(map[k])map[k].qty+=r.qty;else map[k]=Object.assign({},r)});
   pending=Object.values(map).sort((a,b)=>a.sku.localeCompare(b.sku)||a.size-b.size);
-  pendingMeta={bad,nfile:list.length,lech,lechTo,ng:"tiktok"};   /* phiếu gửi PDF = đơn TikTok */
+  pendingMeta={bad,nfile:list.length,lech,lechTo,tongTo,ng:"tiktok"};   /* phiếu gửi PDF = đơn TikTok */
   renderPending();
 }
 /** Đơn này đã trừ kho lần trước chưa? Nhận theo mã vận đơn, không có thì theo mã đơn hàng.
@@ -2090,7 +2091,7 @@ function daTru(r){
 }
 function renderPending(){
   const bad=pendingMeta.bad,nfile=pendingMeta.nfile,lech=pendingMeta.lech||0,
-        lechTo=pendingMeta.lechTo||[];
+        lechTo=pendingMeta.lechTo||[],tongTo=pendingMeta.tongTo||0;
   const out=document.getElementById("pdfOut");
   if(!pending||!pending.length){out.innerHTML="";return}
   let okQty=0,missQty=0;
@@ -2107,6 +2108,9 @@ function renderPending(){
     }
     return Object.assign({},r,{st,ton,ten:f?f.it.ten:"",cu});
   });
+  /* Số tờ phiếu trong file so với số mã đơn đọc ra — lệch là biết ngay có tờ bị
+     sót, khỏi phải ngồi đếm tay từng tờ. */
+  const soDon=new Set(rows.map(r=>r.order||r.track||r.sku+"|"+r.size)).size;
   const thieu=[...new Set(rows.filter(r=>r.st==="nosku").map(r=>r.sku))];
   const badge={ok:'<span class="pill ok">Trừ được</span>',
     short:'<span class="pill low">Không đủ tồn</span>',
@@ -2140,7 +2144,7 @@ function renderPending(){
         <td class="n">${g.ton==null?"–":g.ton}</td>
         <td>${nhan(g)}${g.cu?` <span class="note">trừ ngày ${esc(g.cu.d)} lúc ${esc(g.cu.h||"")}</span>`:""}</td></tr>`).join("")}
       </tbody>
-      <tfoot><tr><td colspan="3">${gop.length} dòng gộp từ ${rows.length} đơn · ${nfile} file${bad?` (${bad} file không đọc được mã)`:""}</td>
+      <tfoot><tr><td colspan="3">${gop.length} dòng gộp từ ${rows.length} đơn${tongTo?` · đọc ${tongTo} tờ phiếu`:""} · ${nfile} file${bad?` (${bad} file không đọc được mã)`:""}${tongTo&&soDon!==tongTo?` <b style="color:var(--lock)">— ${tongTo} tờ mà chỉ ra ${soDon} mã đơn, thiếu ${tongTo-soDon}</b>`:""}</td>
         <td class="n">${okQty+missQty+trungQty+laQty}</td><td colspan="2">trừ được ${okQty}${missQty?` · thiếu tồn ${missQty}`:""}${trungQty?` · <b>đã trừ rồi ${trungQty}</b>`:""}${laQty?` · <b>chưa có mã ${laQty}</b>`:""}</td></tr></tfoot>
     </table>
     <div class="bar" style="padding:14px 0 0">
