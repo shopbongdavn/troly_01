@@ -407,7 +407,7 @@ table.list tr.huy code{text-decoration:line-through}
 "use strict";
 const KEY="ijkho.v1";
 /* Phiên bản phần mềm. Phải trùng với web/version.json thì mới báo bản mới đúng. */
-const APP_VER="4.6", APP_TEN="đối chiếu số tờ phiếu với số đơn đọc ra";
+const APP_VER="4.7", APP_TEN="đơn có kèm tất, túi rút không bị trừ thành giày";
 const uid=()=>Math.random().toString(36).slice(2,9);
 /* Ngày phải tính theo giờ máy, KHÔNG dùng toISOString vì cái đó ra giờ UTC.
    Việt Nam là UTC+7 nên mọi lượt trước 7 giờ sáng sẽ bị ghi lùi một ngày. */
@@ -675,13 +675,15 @@ async function readLabels(u8){
       cuaTrang.push({sku:m[1].toLowerCase(),size,qty:Math.max(1,+m[3]||1),order,
                      track:wb.track,digits:wb.digits});
     }
-    /* Số lượng lấy từ mấy chữ số dính sau size trên mã. Tờ phiếu chỉ có một mã
-       thì tin "Qty Total" hơn — đơn mua 2 đôi cùng size không bị đếm thành 1. */
-    if(cuaTrang.length===1&&tong>0)cuaTrang[0].qty=tong;
-    /* Lệch so với dòng "Qty Total" thì BÁO chứ không tự bỏ bớt. Bỏ bớt trong im
-       lặng có lúc cắt nhầm đơn thật, mà thiếu đơn thì khó phát hiện hơn thừa đơn
-       nhiều. Ghi luôn số tờ để dò lại cho nhanh. */
-    if(!cuaTrang.length||(tong>0&&cuaTrang.reduce((a,x)=>a+x.qty,0)!==tong)){
+    /* KHÔNG lấy số lượng theo dòng "Qty Total". Dòng đó đếm cả phụ kiện — đơn
+       "1 đôi giày + 2 đôi tất" ghi Qty Total: 3, lấy theo đó là trừ kho 3 đôi
+       giày. Số lượng thật nằm ngay sau size trên chính mã hàng
+       (mervp15-bk-41 + cột Qty "1" dính lại thành mervp15-bk-411). */
+    const daBat=cuaTrang.reduce((a,x)=>a+x.qty,0);
+    /* Chỉ báo khi bắt ra NHIỀU HƠN Qty Total (chắc chắn sai, đếm dư), hoặc tờ
+       không ra mã nào. Ít hơn là bình thường: phần dư là phụ kiện, tất, túi rút…
+       những thứ không nằm trong kho giày. */
+    if(!cuaTrang.length||(tong>0&&daBat>tong)){
       lechQty++;lechTrang.push(soTrang);
     }
     rows.push(...cuaTrang);
@@ -2144,7 +2146,7 @@ function renderPending(){
         <td class="n">${g.ton==null?"–":g.ton}</td>
         <td>${nhan(g)}${g.cu?` <span class="note">trừ ngày ${esc(g.cu.d)} lúc ${esc(g.cu.h||"")}</span>`:""}</td></tr>`).join("")}
       </tbody>
-      <tfoot><tr><td colspan="3">${gop.length} dòng gộp từ ${rows.length} đơn${tongTo?` · đọc ${tongTo} tờ phiếu`:""} · ${nfile} file${bad?` (${bad} file không đọc được mã)`:""}${tongTo&&soDon!==tongTo?` <b style="color:var(--lock)">— ${tongTo} tờ mà chỉ ra ${soDon} mã đơn, thiếu ${tongTo-soDon}</b>`:""}</td>
+      <tfoot><tr><td colspan="3">${gop.length} dòng gộp từ ${rows.length} đơn${tongTo?` · đọc ${tongTo} tờ phiếu`:""} · ${nfile} file${bad?` (${bad} file không đọc được mã)`:""}${tongTo&&soDon<tongTo?` <b style="color:var(--low)">— ${tongTo-soDon} tờ không có mã giày nào</b>`:""}</td>
         <td class="n">${okQty+missQty+trungQty+laQty}</td><td colspan="2">trừ được ${okQty}${missQty?` · thiếu tồn ${missQty}`:""}${trungQty?` · <b>đã trừ rồi ${trungQty}</b>`:""}${laQty?` · <b>chưa có mã ${laQty}</b>`:""}</td></tr></tfoot>
     </table>
     <div class="bar" style="padding:14px 0 0">
@@ -2153,8 +2155,9 @@ function renderPending(){
       <button class="btn" id="clrOut">Bỏ qua</button>
       ${thieu.length?`<button class="btn" id="themThieu">+ Thêm ${thieu.length} mã chưa có vào kho</button>`:""}
       ${trungQty?`<span class="note" style="color:var(--low)">${trungQty} đơn đã trừ kho lần trước, lần này bỏ qua để khỏi trừ hai lần.</span>`:""}
-      ${lech?`<span class="note" style="color:var(--low)">${lech} tờ phiếu đọc ra không khớp dòng "Qty Total"
-        — mở file xem lại ${esc(lechTo.slice(0,12).join(", "))}${lechTo.length>12?"…":""}.</span>`:""}
+      ${lech?`<span class="note" style="color:var(--low)">${lech} tờ phiếu không lấy được mã giày —
+        ${esc(lechTo.slice(0,12).join(", "))}${lechTo.length>12?"…":""}.
+        Thường là đơn chỉ có phụ kiện (tất, túi rút…) nên không phải trừ kho; mở file xem lại cho chắc.</span>`:""}
       <label style="display:flex;gap:7px;align-items:center;font-size:13px;width:auto">
         <input type="checkbox" id="negChk" ${allowNeg?"checked":""} style="width:auto">
         Trừ cả dòng không đủ tồn (cho phép tồn âm để đối chiếu sau)</label>
